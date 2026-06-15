@@ -9,6 +9,10 @@ export type SnifflerConfig = {
   };
   resolver?: {
     tsconfig?: string;
+    conditions?: {
+      import?: ReadonlyArray<string>;
+      require?: ReadonlyArray<string>;
+    };
   };
   tests?: {
     manifest?: string;
@@ -26,3 +30,33 @@ export type SnifflerConfigFile = SnifflerConfig & {
 };
 
 export const defaultConfigPath = ".sniffler/config.json";
+
+export const defaultConfig = {
+  source: {
+    roots: ["."],
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
+    ignore: []
+  },
+  workspaces: {
+    strategies: ["package-json", "pnpm-workspace"]
+  },
+  resolver: {
+    tsconfig: "tsconfig.json",
+    conditions: {
+      import: ["import", "node", "default"],
+      require: ["require", "node", "default"]
+    }
+  },
+  tests: {
+    manifest: ".sniffler/test-map.json"
+  },
+  cache: {
+    path: ".sniffler/cache.json"
+  },
+  output: {
+    format: "text"
+  }
+} satisfies SnifflerConfig;
+
+export type SnifflerWorkspaceStrategy = "package-json" | "pnpm-workspace";
+export type SnifflerOutputFormat = "text" | "json";

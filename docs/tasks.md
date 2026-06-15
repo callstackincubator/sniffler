@@ -32,37 +32,22 @@ Verification completed:
 - [x] TypeScript build succeeds
 - [x] Invalid JSON inputs produce typed validation errors
 
+### Task 3: Implement config and test-map loading
+The config and manifest loaders now validate required fields, support the documented default and explicit paths, and return actionable errors for missing or malformed project-owned files.
+
+Verification completed:
+- [x] Unit tests for config lookup order pass
+- [x] Unit tests for manifest validation pass
+- [x] Manual check against a fixture project succeeds
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
 
-### Task 3: Implement config and test-map loading
-**Description:** Load `.sniffler/config.json` and `.sniffler/test-map.json`, validate required fields, and make error messages actionable for invalid or missing project-owned files.
-
-**Acceptance criteria:**
-- Config can be loaded from the default path and an explicit `--config` path.
-- Test manifest loads from the configured path and validates required target structure.
-- Missing or invalid JSON produces clear failures instead of silent fallback.
-
-**Verification:**
-- [ ] Unit tests for config lookup order pass
-- [ ] Unit tests for manifest validation pass
-- [ ] Manual check against a fixture project succeeds
-
-**Dependencies:** Task 2
-
-**Files likely touched:**
-- `src/config/load-config.ts`
-- `src/test-map/load-test-map.ts`
-- `tests/config.test.ts`
-- `tests/test-map.test.ts`
-
-**Estimated scope:** Small
-
 ### Checkpoint: After Tasks 1-3
-- [ ] Package scaffolding works
-- [ ] Config and manifest loading are validated
-- [ ] Build, tests, and lint all pass
+- [x] Package scaffolding works
+- [x] Config and manifest loading are validated
+- [x] Build, tests, and lint all pass
 - [ ] Review the first end-to-end slice before expanding resolution logic
 
 ### Phase 2: Scanner, Graph, and Matching
