@@ -21,4 +21,8 @@ export type SnifflerConfig = {
   };
 };
 
+export type SnifflerConfigFile = SnifflerConfig & {
+  $schema?: string;
+};
+
 export const defaultConfigPath = ".sniffler/config.json";

@@ -24,34 +24,17 @@ Verification completed:
 - `pnpm lint`
 - `sniffler --help`
 
+### Task 2: Define shared types and filesystem adapters
+The shared filesystem abstractions, config/test-map scaffolding, and Node/memory filesystem adapters are in place.
+
+Verification completed:
+- [x] Unit tests for filesystem adapters pass
+- [x] TypeScript build succeeds
+- [x] Invalid JSON inputs produce typed validation errors
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
-
-### Task 2: Define shared types and filesystem adapters
-**Description:** Add the shared types and abstractions that everything else depends on: filesystem interface, config/test-map/cache types, and memory/node filesystem adapters.
-
-**Acceptance criteria:**
-- Core code depends on filesystem interfaces, not Node APIs directly.
-- Config, manifest, and cache types are defined centrally and reused across modules.
-- Tests can exercise loaders and scanners without touching real disk.
-
-**Verification:**
-- [ ] Unit tests for filesystem adapters pass
-- [ ] TypeScript build succeeds
-- [ ] Invalid JSON inputs produce typed validation errors
-
-**Dependencies:** Completed Task 1
-
-**Files likely touched:**
-- `src/filesystem/filesystem.ts`
-- `src/filesystem/node-filesystem.ts`
-- `src/filesystem/memory-filesystem.ts`
-- `src/config/config-schema.ts`
-- `src/cache/cache-types.ts`
-- `src/test-map/load-test-map.ts`
-
-**Estimated scope:** Medium
 
 ### Task 3: Implement config and test-map loading
 **Description:** Load `.sniffler/config.json` and `.sniffler/test-map.json`, validate required fields, and make error messages actionable for invalid or missing project-owned files.

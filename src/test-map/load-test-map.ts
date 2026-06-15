@@ -11,6 +11,10 @@ export type TestMap = {
   tests: ReadonlyArray<TestMapEntry>;
 };
 
+export type TestMapFile = TestMap & {
+  $schema?: string;
+};
+
 export const loadTestMap = async (_fs: FileSystem, _path: string): Promise<TestMap> => {
   return {
     tests: []
