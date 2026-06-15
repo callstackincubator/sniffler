@@ -103,6 +103,16 @@ Verification completed:
 - [x] `pnpm build`
 - [x] `pnpm lint`
 
+### Task 10: Implement cache load, validation, and atomic save
+The cache loader now validates untrusted restored data, respects config-hash and scanner-version mismatches, and the saver writes via a temporary file before renaming into place.
+
+Verification completed:
+- [x] Cache load and config-hash invalidation tests pass
+- [x] Atomic-save behavior is covered by tests
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -129,28 +139,6 @@ Verification completed:
 - [x] Monorepo fixture resolves impacted E2E tests correctly
 
 ### Phase 4: Cache, CLI, and Coverage
-
-### Task 10: Implement cache load, validation, and atomic save
-**Description:** Add cache loading, config-hash invalidation, content-hash reuse, and atomic cache writes while treating restored cache as untrusted.
-
-**Acceptance criteria:**
-- Cache is reused only when file content hashes still match.
-- Config hash changes fully invalidate the cache.
-- Cache writes are atomic and never leave a partial file behind.
-
-**Verification:**
-- [ ] Cache reuse tests pass
-- [ ] Cache invalidation tests pass
-- [ ] Atomic-save behavior is covered by tests
-
-**Dependencies:** Tasks 2-9
-
-**Files likely touched:**
-- `src/cache/load-cache.ts`
-- `src/cache/save-cache.ts`
-- `tests/cache.test.ts`
-
-**Estimated scope:** Medium
 
 ### Task 11: Finish the CLI and output formats
 **Description:** Wire `sniffler impact` end-to-end for `--base/--head` and `--changed`, and finalize stable human-readable text and JSON output.

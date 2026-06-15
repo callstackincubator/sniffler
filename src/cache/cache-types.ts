@@ -19,3 +19,8 @@ export type GraphCache = {
   scannerVersion: string;
   files: Record<string, CacheEntry>;
 };
+
+export type LoadCacheOptions = {
+  configHash?: string;
+  scannerVersion?: string;
+};
