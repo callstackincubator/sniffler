@@ -40,6 +40,17 @@ Verification completed:
 - [x] Unit tests for manifest validation pass
 - [x] Manual check against a fixture project succeeds
 
+### Task 4: Build the scanner
+The lightweight text scanner now detects static `import`, `export`, `require`, and literal dynamic import forms, and it emits warnings for non-literal dynamic expressions without throwing on unsupported syntax.
+
+Verification completed:
+- [x] Unit tests for static imports and exports pass
+- [x] Unit tests for dynamic import warnings pass
+- [x] Scanner output is deterministic for identical input
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -51,28 +62,6 @@ Verification completed:
 - [ ] Review the first end-to-end slice before expanding resolution logic
 
 ### Phase 2: Scanner, Graph, and Matching
-
-### Task 4: Build the scanner
-**Description:** Implement the lightweight text scanner for static `import`, `export`, `require`, and supported dynamic import forms, including warning generation for non-literal dynamic expressions.
-
-**Acceptance criteria:**
-- Supported static forms are detected without AST parsing.
-- Unsupported dynamic imports and requires emit warnings and no edges.
-- Scanner stays pure: no logging, filesystem access, or thrown syntax errors for unsupported syntax.
-
-**Verification:**
-- [ ] Unit tests for static imports and exports pass
-- [ ] Unit tests for dynamic import warnings pass
-- [ ] Scanner output is deterministic for identical input
-
-**Dependencies:** Tasks 1-3
-
-**Files likely touched:**
-- `src/scanner/scan-file.ts`
-- `src/scanner/scanner-types.ts`
-- `tests/scanner.test.ts`
-
-**Estimated scope:** Medium
 
 ### Task 5: Implement relative resolution and single-package graph traversal
 **Description:** Add relative import resolution and wire scanner output into a graph builder that can compute affected modules for a single-package project.
