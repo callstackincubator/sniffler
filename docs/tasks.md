@@ -73,6 +73,16 @@ Verification completed:
 - [x] `pnpm build`
 - [x] `pnpm lint`
 
+### Task 7: Add workspace discovery
+Workspace discovery now supports `package.json#workspaces` array and object forms, `pnpm-workspace.yaml#packages` glob lists with basic exclusions, named pnpm root packages, package metadata loading, deterministic sorting, and orchestration-level deduplication by root path.
+
+Verification completed:
+- [x] Unit tests for each discovery strategy pass
+- [x] Fixture-style integration coverage passes for workspace package metadata
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -91,28 +101,6 @@ Verification completed:
 - [x] Output reasons are stable and shortest-path based
 
 ### Phase 3: Workspaces and Resolvers
-
-### Task 7: Add workspace discovery
-**Description:** Implement workspace discovery for `package.json#workspaces` and `pnpm-workspace.yaml#packages`, with deduplication by root path.
-
-**Acceptance criteria:**
-- Both workspace discovery strategies work on fixture repos.
-- Duplicate workspace roots are deduped.
-- Workspace package metadata includes names, roots, and supporting paths.
-
-**Verification:**
-- [ ] Unit tests for each discovery strategy pass
-- [ ] Fixture-based integration tests pass for a workspace repo
-
-**Dependencies:** Tasks 2-6
-
-**Files likely touched:**
-- `src/workspaces/discover-workspaces.ts`
-- `src/workspaces/package-json-workspaces.ts`
-- `src/workspaces/pnpm-workspace-yaml.ts`
-- `tests/workspaces.test.ts`
-
-**Estimated scope:** Medium
 
 ### Task 8: Add tsconfig paths and workspace package resolution
 **Description:** Implement `tsconfig.paths` resolution and workspace package-name resolution so package imports resolve across the monorepo graph.
@@ -157,7 +145,7 @@ Verification completed:
 **Estimated scope:** Medium
 
 ### Checkpoint: After Tasks 7-9
-- [ ] Workspace discovery works for both supported strategies
+- [x] Workspace discovery works for both supported strategies
 - [ ] Alias, package-name, and exports resolution all work
 - [ ] Monorepo fixture resolves impacted E2E tests correctly
 
