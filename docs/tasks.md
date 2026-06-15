@@ -62,6 +62,17 @@ Verification completed:
 - [x] `pnpm build`
 - [x] `pnpm lint`
 
+### Task 6: Match tests from the manifest and produce reasons
+The manifest matcher now connects impacted modules to `.sniffler/test-map.json`, supports exact and glob target matching, and returns stable reasons with the shortest dependency path for each selected test.
+
+Verification completed:
+- [x] Manifest matching tests pass for exact and glob targets
+- [x] Reason-path tests pass
+- [x] Selected tests are stable and sorted
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -74,33 +85,10 @@ Verification completed:
 
 ### Phase 2: Scanner, Graph, and Matching
 
-### Task 6: Match tests from the manifest and produce reasons
-**Description:** Connect the impacted module set to `.sniffler/test-map.json`, support exact and glob target matching, and return the shortest dependency path reason for each selected test.
-
-**Acceptance criteria:**
-- Exact and glob targets both match correctly.
-- Each selected test includes the touched target and shortest dependency path.
-- Traversal continues after the first match so higher-level modules can select additional tests.
-
-**Verification:**
-- [ ] Manifest matching tests pass for exact and glob targets
-- [ ] Reason-path tests pass
-- [ ] Selected tests are stable and sorted
-
-**Dependencies:** Task 5
-
-**Files likely touched:**
-- `src/test-map/match-tests.ts`
-- `src/output/text-output.ts`
-- `src/output/json-output.ts`
-- `tests/test-match.test.ts`
-
-**Estimated scope:** Medium
-
 ### Checkpoint: After Tasks 4-6
-- [ ] Scanner, graph, and manifest matching work end-to-end
-- [ ] Single-package impact selection is correct
-- [ ] Output reasons are stable and shortest-path based
+- [x] Scanner, graph, and manifest matching work end-to-end
+- [x] Single-package impact selection is correct
+- [x] Output reasons are stable and shortest-path based
 
 ### Phase 3: Workspaces and Resolvers
 
