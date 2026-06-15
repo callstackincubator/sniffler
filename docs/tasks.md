@@ -124,6 +124,14 @@ Verification completed:
 - [x] `pnpm lint`
 - [x] Built CLI smoke test: `node dist/cli.js impact --help`
 
+### Task 12: Add fixture coverage and release hygiene
+The fixture set now covers the single-package, `package.json` workspaces, pnpm workspaces, tsconfig paths, package exports, and workspace package import flows from the spec. Fixture-backed integration tests exercise warnings, no-mapped-tests, text output, and JSON output, and the repo now includes top-level usage docs plus fixture documentation.
+
+Verification completed:
+- [x] Full test suite passes
+- [x] Build and lint pass
+- [x] Fixture-driven end-to-end flows match the spec
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -150,29 +158,6 @@ Verification completed:
 - [x] Monorepo fixture resolves impacted E2E tests correctly
 
 ### Phase 4: Cache, CLI, and Coverage
-
-### Task 12: Add fixture coverage and release hygiene
-**Description:** Build the integration fixture set from the spec, add golden tests for the main flows, and finish documentation and packaging details.
-
-**Acceptance criteria:**
-- Fixtures exist for single-package, `package.json` workspaces, pnpm workspaces, tsconfig paths, and package exports.
-- Golden tests cover warnings, no-mapped-tests, text output, and JSON output.
-- Repo docs reflect the implemented command surface and project layout.
-
-**Verification:**
-- [ ] Full test suite passes
-- [ ] Build and lint pass
-- [ ] Fixture-driven end-to-end flows match the spec
-
-**Dependencies:** Tasks 1-11
-
-**Files likely touched:**
-- `tests/fixtures/*`
-- `tests/*.test.ts`
-- `README.md` or equivalent docs
-- `package.json`
-
-**Estimated scope:** Large, but can be split into smaller fixture-specific follow-ups if needed
 
 ## Risks and Mitigations
 | Risk | Impact | Mitigation |

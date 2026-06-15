@@ -1,0 +1,13 @@
+{
+  "source": {
+    "roots": ["apps", "packages"],
+    "extensions": [".ts"],
+    "ignore": []
+  },
+  "workspaces": {
+    "strategies": ["pnpm-workspace"]
+  },
+  "tests": {
+    "manifest": ".sniffler/test-map.json"
+  }
+}

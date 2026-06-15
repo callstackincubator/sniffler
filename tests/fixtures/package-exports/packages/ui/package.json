@@ -1,0 +1,8 @@
+{
+  "name": "@acme/ui",
+  "exports": {
+    ".": "./src/index.ts",
+    "./button": "./src/button.ts",
+    "./features/*": "./src/features/*"
+  }
+}

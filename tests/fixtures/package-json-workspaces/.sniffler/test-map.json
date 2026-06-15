@@ -1,0 +1,8 @@
+{
+  "tests": [
+    {
+      "test": "e2e/checkout.spec.ts",
+      "targets": ["apps/web/src/screens/CheckoutScreen.ts"]
+    }
+  ]
+}

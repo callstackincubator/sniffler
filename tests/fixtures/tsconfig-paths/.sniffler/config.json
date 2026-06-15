@@ -1,0 +1,13 @@
+{
+  "source": {
+    "roots": ["apps", "packages"],
+    "extensions": [".ts"],
+    "ignore": []
+  },
+  "resolver": {
+    "tsconfig": "tsconfig.json"
+  },
+  "tests": {
+    "manifest": ".sniffler/test-map.json"
+  }
+}
