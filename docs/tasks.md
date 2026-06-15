@@ -51,6 +51,17 @@ Verification completed:
 - [x] `pnpm build`
 - [x] `pnpm lint`
 
+### Task 5: Implement relative resolution and single-package graph traversal
+Relative imports now normalize through the relative resolver, graph construction emits forward edges from scanner output, and reverse impact traversal walks those edges breadth-first while preserving shortest dependency paths for reasons.
+
+Verification completed:
+- [x] Unit tests for relative resolution pass
+- [x] Graph traversal tests pass on a single-package fixture
+- [x] Impact output for one changed file matches expected affected modules
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -59,32 +70,9 @@ Verification completed:
 - [x] Package scaffolding works
 - [x] Config and manifest loading are validated
 - [x] Build, tests, and lint all pass
-- [ ] Review the first end-to-end slice before expanding resolution logic
+- [x] Review the first end-to-end slice before expanding resolution logic
 
 ### Phase 2: Scanner, Graph, and Matching
-
-### Task 5: Implement relative resolution and single-package graph traversal
-**Description:** Add relative import resolution and wire scanner output into a graph builder that can compute affected modules for a single-package project.
-
-**Acceptance criteria:**
-- `./` and `../` imports resolve correctly.
-- A changed file can be traversed through reverse dependencies to impacted modules.
-- Reverse traversal preserves shortest paths for reason reporting.
-
-**Verification:**
-- [ ] Unit tests for relative resolution pass
-- [ ] Graph traversal tests pass on a single-package fixture
-- [ ] Impact output for one changed file matches expected affected modules
-
-**Dependencies:** Task 4
-
-**Files likely touched:**
-- `src/resolvers/relative-resolver.ts`
-- `src/graph/build-graph.ts`
-- `src/graph/traverse-impact.ts`
-- `tests/graph.test.ts`
-
-**Estimated scope:** Medium
 
 ### Task 6: Match tests from the manifest and produce reasons
 **Description:** Connect the impacted module set to `.sniffler/test-map.json`, support exact and glob target matching, and return the shortest dependency path reason for each selected test.

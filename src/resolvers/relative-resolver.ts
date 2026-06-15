@@ -1,4 +1,12 @@
+import { dirname, join } from "node:path";
+
+import { normalizePath } from "../filesystem/path-utils.js";
 import type { ResolveContext, ResolveResult, Resolver } from "./resolve-import.js";
+
+export const resolveRelativePath = (specifier: string, fromFile: string): string => {
+  const baseDirectory = dirname(normalizePath(fromFile));
+  return normalizePath(join(baseDirectory, specifier));
+};
 
 export const relativeResolver: Resolver = {
   name: "relative",
@@ -7,10 +15,9 @@ export const relativeResolver: Resolver = {
       return { type: "unresolved", warning: "Not a relative specifier" };
     }
 
-    const baseDirectory = fromFile.slice(0, Math.max(fromFile.lastIndexOf("/"), 0));
     return {
       type: "resolved",
-      path: `${baseDirectory}/${specifier}`,
+      path: resolveRelativePath(specifier, fromFile),
       resolver: "relative"
     };
   }
