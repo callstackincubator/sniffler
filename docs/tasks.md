@@ -113,6 +113,17 @@ Verification completed:
 - [x] `pnpm build`
 - [x] `pnpm lint`
 
+### Task 11: Finish the CLI and output formats
+The `sniffler impact` command now runs end-to-end for `--base/--head` and `--changed`, and text/JSON output is rendered deterministically from the selected impact result.
+
+Verification completed:
+- [x] CLI tests pass for text output, JSON output, and the no-mapped-tests case
+- [x] The top-level factory exposes the impact API
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+- [x] Built CLI smoke test: `node dist/cli.js impact --help`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -139,31 +150,6 @@ Verification completed:
 - [x] Monorepo fixture resolves impacted E2E tests correctly
 
 ### Phase 4: Cache, CLI, and Coverage
-
-### Task 11: Finish the CLI and output formats
-**Description:** Wire `sniffler impact` end-to-end for `--base/--head` and `--changed`, and finalize stable human-readable text and JSON output.
-
-**Acceptance criteria:**
-- `sniffler impact --base ... --head ...` computes changed files from Git.
-- `--changed` works for local debugging and non-Git callers.
-- Text and JSON output match the spec and remain deterministically ordered.
-- No mapped tests exits successfully with an empty recommended-test list.
-
-**Verification:**
-- [ ] CLI golden tests pass for text and JSON output
-- [ ] Manual check on fixture repos matches the spec examples
-- [ ] No-tests fixture exits successfully
-
-**Dependencies:** Tasks 5-10
-
-**Files likely touched:**
-- `src/cli.ts`
-- `src/create-sniffler.ts`
-- `src/output/text-output.ts`
-- `src/output/json-output.ts`
-- `tests/cli.test.ts`
-
-**Estimated scope:** Medium
 
 ### Task 12: Add fixture coverage and release hygiene
 **Description:** Build the integration fixture set from the spec, add golden tests for the main flows, and finish documentation and packaging details.
