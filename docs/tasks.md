@@ -83,6 +83,26 @@ Verification completed:
 - [x] `pnpm build`
 - [x] `pnpm lint`
 
+### Task 8: Add tsconfig paths and workspace package resolution
+`tsconfig.paths` resolution and workspace package-name resolution now resolve package imports across the monorepo graph, while external packages and Node builtins stay out of the graph.
+
+Verification completed:
+- [x] Resolver unit tests pass for alias and workspace-name cases
+- [x] Monorepo fixture impacts resolve across package boundaries
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
+### Task 9: Support `package.json.exports`
+The package exports resolver now handles supported `package.json.exports` shapes, ordered condition matching, and workspace package export resolution across the graph.
+
+Verification completed:
+- [x] Exports resolver tests pass for string, object, subpath, wildcard, and condition-object shapes
+- [x] Fixture imports through workspace package exports resolve correctly
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
@@ -102,59 +122,10 @@ Verification completed:
 
 ### Phase 3: Workspaces and Resolvers
 
-### Task 8: Add tsconfig paths and workspace package resolution
-**Description:** Implement `tsconfig.paths` resolution and workspace package-name resolution so package imports resolve across the monorepo graph.
-
-**Acceptance criteria:**
-- `compilerOptions.paths` aliases resolve correctly.
-- Workspace package names resolve to discovered package roots.
-- External packages and Node builtins are ignored, not traversed.
-
-**Verification:**
-- [x] Resolver unit tests pass for alias and workspace-name cases
-- [x] Monorepo fixture impacts resolve across package boundaries
-
-**Dependencies:** Task 7
-
-**Files likely touched:**
-- `src/resolvers/tsconfig-paths-resolver.ts`
-- `src/resolvers/workspace-package-resolver.ts`
-- `src/resolvers/resolve-import.ts`
-- `tests/resolvers.test.ts`
-
-**Estimated scope:** Medium
-
-Verification completed:
-- [x] Resolver unit tests pass for alias and workspace-name cases
-- [x] Monorepo fixture impacts resolve across package boundaries
-- [x] `pnpm test`
-- [x] `pnpm build`
-- [x] `pnpm lint`
-
-### Task 9: Support `package.json.exports`
-**Description:** Add a separate exports resolver for supported `package.json.exports` shapes, including ordered condition matching for import and require contexts.
-
-**Acceptance criteria:**
-- String, object, subpath, and condition-object export shapes resolve correctly.
-- Condition key order is respected.
-- Import and require default condition sets differ as specified.
-
-**Verification:**
-- [ ] Exports resolver tests pass for all supported shapes
-- [ ] Fixture imports through workspace package exports resolve correctly
-
-**Dependencies:** Task 8
-
-**Files likely touched:**
-- `src/resolvers/package-exports-resolver.ts`
-- `tests/package-exports.test.ts`
-
-**Estimated scope:** Medium
-
 ### Checkpoint: After Tasks 7-9
 - [x] Workspace discovery works for both supported strategies
 - [x] Alias and package-name resolution work
-- [ ] Exports resolution still needs Task 9
+- [x] Exports resolution works for supported package export shapes
 - [x] Monorepo fixture resolves impacted E2E tests correctly
 
 ### Phase 4: Cache, CLI, and Coverage

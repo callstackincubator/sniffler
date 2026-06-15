@@ -8,10 +8,17 @@ export type TsconfigPathsConfig = {
   paths?: TsconfigPathsMapping;
 };
 
+export type ResolveImportKind = "import" | "require";
+
 export type ResolveContext = {
   fs: FileSystem;
   workspacePackages?: ReadonlyArray<WorkspacePackage>;
   tsconfigPaths?: TsconfigPathsConfig;
+  conditions?: {
+    import?: ReadonlyArray<string>;
+    require?: ReadonlyArray<string>;
+  };
+  importKind?: ResolveImportKind;
 };
 
 export type ResolveResult =

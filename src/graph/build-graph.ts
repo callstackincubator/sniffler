@@ -59,12 +59,15 @@ export const buildGraph = async (
       const result = await resolveImport(
         dependency.specifier,
         node.path,
-        resolveContext,
+        {
+          ...resolveContext,
+          importKind: dependency.kind === "require" ? "require" : "import"
+        },
         [
           relativeResolver,
           tsconfigPathsResolver,
-          workspacePackageResolver,
-          packageExportsResolver
+          packageExportsResolver,
+          workspacePackageResolver
         ]
       );
 
