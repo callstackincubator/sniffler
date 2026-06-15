@@ -13,35 +13,20 @@ Build `sniffler` as a standalone pnpm-based npm package that helps JavaScript an
 - Keep the scanner lightweight and text-based; no AST parser in V1.
 - Treat cache as an optimization only, validate it on every run, and invalidate it on config hash changes.
 
+## Completed
+
+### Task 1: Create the package scaffold
+The repository is now a pnpm-managed TypeScript package with `vitest`, lint/build scripts, CLI entrypoint wiring, and the expected directory structure.
+
+Verification completed:
+- `pnpm build`
+- `pnpm test`
+- `pnpm lint`
+- `sniffler --help`
+
 ## Task List
 
 ### Phase 1: Scaffold and Core Types
-
-### Task 1: Create the package scaffold
-**Description:** Initialize the repository as a pnpm-managed TypeScript package with `vitest`, lint/build scripts, CLI entrypoint wiring, and the directory structure described by the spec.
-
-**Acceptance criteria:**
-- `pnpm build`, `pnpm test`, and `pnpm lint` are defined and run successfully.
-- A CLI entrypoint exists and prints `--help` output.
-- The source tree has the expected top-level folders for config, filesystem, scanner, workspaces, resolvers, graph, cache, test-map, output, and tests.
-
-**Verification:**
-- [ ] `pnpm build`
-- [ ] `pnpm test`
-- [ ] `pnpm lint`
-- [ ] Manual check: `sniffler --help`
-
-**Dependencies:** None
-
-**Files likely touched:**
-- `package.json`
-- `pnpm-workspace.yaml` if needed for repo tooling
-- `tsconfig.json`
-- `src/cli.ts`
-- `src/index.ts`
-- `tests/setup.ts`
-
-**Estimated scope:** Medium
 
 ### Task 2: Define shared types and filesystem adapters
 **Description:** Add the shared types and abstractions that everything else depends on: filesystem interface, config/test-map/cache types, and memory/node filesystem adapters.
@@ -56,7 +41,7 @@ Build `sniffler` as a standalone pnpm-based npm package that helps JavaScript an
 - [ ] TypeScript build succeeds
 - [ ] Invalid JSON inputs produce typed validation errors
 
-**Dependencies:** Task 1
+**Dependencies:** Completed Task 1
 
 **Files likely touched:**
 - `src/filesystem/filesystem.ts`
@@ -325,4 +310,3 @@ Build `sniffler` as a standalone pnpm-based npm package that helps JavaScript an
 
 ## Open Questions
 - None for now; V1 scope decisions are fixed.
-

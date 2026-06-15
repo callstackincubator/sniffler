@@ -1,0 +1,24 @@
+{
+  "name": "sniffler",
+  "version": "0.0.0",
+  "description": "E2E impact selector for JavaScript and TypeScript projects.",
+  "type": "module",
+  "bin": {
+    "sniffler": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist coverage"
+  },
+  "packageManager": "pnpm@11.5.1",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  }
+}
