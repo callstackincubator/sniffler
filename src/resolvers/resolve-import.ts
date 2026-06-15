@@ -1,7 +1,17 @@
 import type { FileSystem } from "../filesystem/filesystem.js";
+import { builtinModules } from "node:module";
+import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
+
+export type TsconfigPathsMapping = Record<string, ReadonlyArray<string>>;
+export type TsconfigPathsConfig = {
+  baseUrl?: string;
+  paths?: TsconfigPathsMapping;
+};
 
 export type ResolveContext = {
   fs: FileSystem;
+  workspacePackages?: ReadonlyArray<WorkspacePackage>;
+  tsconfigPaths?: TsconfigPathsConfig;
 };
 
 export type ResolveResult =
@@ -29,6 +39,15 @@ export const resolveImport = async (
   context: ResolveContext,
   resolvers: ReadonlyArray<Resolver> = []
 ): Promise<ResolveResult> => {
+  const bareSpecifier = !specifier.startsWith("./") && !specifier.startsWith("../") && !specifier.startsWith("/");
+
+  if (
+    bareSpecifier &&
+    (builtinModules.includes(specifier) || builtinModules.includes(`node:${specifier}`))
+  ) {
+    return { type: "external" };
+  }
+
   for (const resolver of resolvers) {
     const result = await resolver.resolve(specifier, fromFile, context);
     if (result.type !== "unresolved") {

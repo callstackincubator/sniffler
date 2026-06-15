@@ -111,8 +111,8 @@ Verification completed:
 - External packages and Node builtins are ignored, not traversed.
 
 **Verification:**
-- [ ] Resolver unit tests pass for alias and workspace-name cases
-- [ ] Monorepo fixture impacts resolve across package boundaries
+- [x] Resolver unit tests pass for alias and workspace-name cases
+- [x] Monorepo fixture impacts resolve across package boundaries
 
 **Dependencies:** Task 7
 
@@ -123,6 +123,13 @@ Verification completed:
 - `tests/resolvers.test.ts`
 
 **Estimated scope:** Medium
+
+Verification completed:
+- [x] Resolver unit tests pass for alias and workspace-name cases
+- [x] Monorepo fixture impacts resolve across package boundaries
+- [x] `pnpm test`
+- [x] `pnpm build`
+- [x] `pnpm lint`
 
 ### Task 9: Support `package.json.exports`
 **Description:** Add a separate exports resolver for supported `package.json.exports` shapes, including ordered condition matching for import and require contexts.
@@ -146,8 +153,9 @@ Verification completed:
 
 ### Checkpoint: After Tasks 7-9
 - [x] Workspace discovery works for both supported strategies
-- [ ] Alias, package-name, and exports resolution all work
-- [ ] Monorepo fixture resolves impacted E2E tests correctly
+- [x] Alias and package-name resolution work
+- [ ] Exports resolution still needs Task 9
+- [x] Monorepo fixture resolves impacted E2E tests correctly
 
 ### Phase 4: Cache, CLI, and Coverage
 

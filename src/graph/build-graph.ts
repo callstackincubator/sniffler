@@ -1,6 +1,11 @@
 import type { ResolvedEdge } from "../cache/cache-types.js";
+import type { FileSystem } from "../filesystem/filesystem.js";
 import { normalizePath } from "../filesystem/path-utils.js";
-import { resolveRelativePath } from "../resolvers/relative-resolver.js";
+import { relativeResolver } from "../resolvers/relative-resolver.js";
+import { resolveImport, type ResolveContext } from "../resolvers/resolve-import.js";
+import { tsconfigPathsResolver } from "../resolvers/tsconfig-paths-resolver.js";
+import { workspacePackageResolver } from "../resolvers/workspace-package-resolver.js";
+import { packageExportsResolver } from "../resolvers/package-exports-resolver.js";
 import type { ScanResult } from "../scanner/scanner-types.js";
 
 export type GraphNode = {
@@ -13,7 +18,31 @@ export type DependencyGraph = {
   edges: ReadonlyArray<ResolvedEdge>;
 };
 
-export const buildGraph = async (nodes: ReadonlyArray<GraphNode>): Promise<DependencyGraph> => {
+export type BuildGraphInput = {
+  resolveContext?: ResolveContext;
+};
+
+export const buildGraph = async (
+  nodes: ReadonlyArray<GraphNode>,
+  input: BuildGraphInput = {}
+): Promise<DependencyGraph> => {
+  const fallbackFileSystem: FileSystem = {
+    readFile: async (path: string) => {
+      throw new Error(`File not found: ${path}`);
+    },
+    readJson: async <T>(path: string) => {
+      throw new Error(`File not found: ${path}`);
+    },
+    exists: async () => false,
+    glob: async () => [],
+    stat: async (path: string) => {
+      throw new Error(`Path not found: ${path}`);
+    },
+    writeFile: async () => undefined,
+    rename: async () => undefined
+  };
+  const resolveContext = input.resolveContext ?? { fs: fallbackFileSystem };
+
   const normalizedNodes = new Map<string, GraphNode>();
   const edges: ResolvedEdge[] = [];
 
@@ -27,14 +56,26 @@ export const buildGraph = async (nodes: ReadonlyArray<GraphNode>): Promise<Depen
 
   for (const node of normalizedNodes.values()) {
     for (const dependency of node.scan.imports) {
-      if (!dependency.specifier.startsWith("./") && !dependency.specifier.startsWith("../")) {
+      const result = await resolveImport(
+        dependency.specifier,
+        node.path,
+        resolveContext,
+        [
+          relativeResolver,
+          tsconfigPathsResolver,
+          workspacePackageResolver,
+          packageExportsResolver
+        ]
+      );
+
+      if (result.type !== "resolved") {
         continue;
       }
 
       edges.push({
         from: node.path,
-        to: resolveRelativePath(dependency.specifier, node.path),
-        resolver: "relative"
+        to: result.path,
+        resolver: result.resolver
       });
     }
   }

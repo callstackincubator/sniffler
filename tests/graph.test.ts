@@ -191,4 +191,71 @@ describe("graph traversal", () => {
       }
     ]);
   });
+
+  it("resolves tsconfig aliases across workspace package boundaries", async () => {
+    const fs = createMemoryFileSystem({
+      "packages/shared/src/button.ts": "export const button = true;",
+      "apps/web/src/routes.ts": 'import "@shared/button";',
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: {
+            "@shared/*": ["packages/shared/src/*"]
+          }
+        }
+      })
+    });
+
+    const graph = await buildGraph(
+      [
+        {
+          path: "packages/shared/src/button.ts",
+          scan: scanFileText({
+            filePath: "packages/shared/src/button.ts",
+            text: "export const button = true;"
+          })
+        },
+        {
+          path: "apps/web/src/routes.ts",
+          scan: scanFileText({
+            filePath: "apps/web/src/routes.ts",
+            text: 'import "@shared/button";'
+          })
+        }
+      ],
+      {
+        resolveContext: {
+          fs,
+          tsconfigPaths: {
+            baseUrl: ".",
+            paths: {
+              "@shared/*": ["packages/shared/src/*"]
+            }
+          }
+        }
+      }
+    );
+
+    expect(graph.edges).toEqual([
+      {
+        from: "apps/web/src/routes.ts",
+        to: "packages/shared/src/button.ts",
+        resolver: "tsconfig-paths"
+      }
+    ]);
+
+    expect(await traverseImpact(graph, ["packages/shared/src/button.ts"])).toEqual({
+      affectedModules: ["packages/shared/src/button.ts", "apps/web/src/routes.ts"],
+      paths: [
+        {
+          module: "packages/shared/src/button.ts",
+          path: ["packages/shared/src/button.ts"]
+        },
+        {
+          module: "apps/web/src/routes.ts",
+          path: ["packages/shared/src/button.ts", "apps/web/src/routes.ts"]
+        }
+      ]
+    });
+  });
 });
