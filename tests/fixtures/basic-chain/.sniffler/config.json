@@ -1,0 +1,10 @@
+{
+  "source": {
+    "roots": ["."],
+    "extensions": [".ts"],
+    "ignore": []
+  },
+  "tests": {
+    "manifest": ".sniffler/test-map.json"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "tests": [
+    {
+      "test": "e2e/page.spec.ts",
+      "targets": ["page.ts"]
+    }
+  ]
+}

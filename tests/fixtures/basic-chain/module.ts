@@ -1,4 +1,4 @@
-import { alpha } from "./a";
-import { beta } from "./b";
+import { alpha } from "./a.ts";
+import { beta } from "./b.ts";
 
 export { alpha, beta };
