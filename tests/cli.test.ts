@@ -133,3 +133,121 @@ describe("CLI impact command", () => {
     expect(result.output).toContain("e2e/feature.spec.ts");
   });
 });
+
+describe("CLI run command", () => {
+  it("appends selected tests to the runner args", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).toHaveBeenCalledWith({
+      command: "pnpm",
+      args: ["vitest", "run", "e2e/feature.spec.ts"],
+      cwd: expect.any(String)
+    });
+    expect(output).toEqual([]);
+  });
+
+  it("returns the runner exit code", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 7 }));
+
+    const result = await runCli(
+      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(7);
+  });
+
+  it("skips the runner when no tests are mapped", async () => {
+    const fs = createFixtureFileSystem(["src/unrelated.ts"]);
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).not.toHaveBeenCalled();
+    expect(output).toEqual([]);
+  });
+
+  it("errors without the -- separator", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["run", "--base", "origin/main", "--head", "HEAD", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(runner).not.toHaveBeenCalled();
+    expect(stderr.join("")).toContain("sniffler run requires a runner command after --");
+    expect(stdout.join("")).toContain("sniffler run");
+  });
+
+  it("errors when -- has no command", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["run", "--base", "origin/main", "--head", "HEAD", "--"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(runner).not.toHaveBeenCalled();
+    expect(stderr.join("")).toContain("sniffler run requires a runner command after --");
+    expect(stdout.join("")).toContain("sniffler run");
+  });
+});

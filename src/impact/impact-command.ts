@@ -25,6 +25,8 @@ export type ImpactCommandInput = {
   format?: SnifflerOutputFormat;
 };
 
+export type SelectImpactInput = ImpactCommandInput;
+
 export type ImpactCommandResult = {
   exitCode: number;
   output: string;
@@ -214,10 +216,10 @@ const resolveChangedFilesFromGit = async (
   return sortUniqueStrings(changedFiles.map((path) => normalizePath(path)));
 };
 
-export const runImpactCommand = async (
-  input: ImpactCommandInput,
+export const selectImpact = async (
+  input: SelectImpactInput,
   deps: ImpactCommandDeps
-): Promise<ImpactCommandResult> => {
+): Promise<ImpactOutput> => {
   const fs = getFs(deps);
   const cwd = getCwd(deps);
   const config = (await loadConfig({ fs, configPath: input.configPath })).config;
@@ -259,13 +261,21 @@ export const runImpactCommand = async (
   const impact = await traverseImpact(graph, changedFiles);
   const testMap = await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
   const recommendedTests = matchTests({ testMap, impact });
-  const output: ImpactOutput = {
+  return {
     changedFiles: sortUniqueStrings(changedFiles),
     affectedModules: sortUniqueStrings(impact.affectedModules),
     recommendedTests,
     warnings: sortUniqueStrings(scanWarnings)
   };
+};
 
+export const runImpactCommand = async (
+  input: ImpactCommandInput,
+  deps: ImpactCommandDeps
+): Promise<ImpactCommandResult> => {
+  const output = await selectImpact(input, deps);
+  const fs = getFs(deps);
+  const config = (await loadConfig({ fs, configPath: input.configPath })).config;
   const format = input.format ?? config.output?.format ?? "text";
   const rendered = format === "json" ? renderJsonOutput(output) : renderTextOutput(output);
 

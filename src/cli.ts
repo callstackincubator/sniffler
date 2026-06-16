@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from "node:url";
-import type { ImpactCommandDeps, ImpactCommandInput } from "./impact/impact-command.js";
+import type { ImpactCommandInput } from "./impact/impact-command.js";
 import { runImpactCommand } from "./impact/impact-command.js";
+import type { RunCommandDeps, RunCommandInput } from "./run/run-command.js";
+import { runRunCommand } from "./run/run-command.js";
 
-export type CliSubcommand = "impact";
+export type CliSubcommand = "impact" | "run";
 
 export type CliIO = {
   stdout: (chunk: string) => void;
   stderr: (chunk: string) => void;
 };
 
-export type CliDeps = ImpactCommandDeps;
+export type CliDeps = RunCommandDeps;
 
 export type CliResult = {
   exitCode: number;
@@ -32,11 +34,15 @@ const helpText = [
   "Usage:",
   "  sniffler --help",
   "  sniffler impact --help",
+  "  sniffler run --help",
   "  sniffler impact --base <ref> --head <ref>",
   "  sniffler impact --changed <file> [<file> ...]",
+  "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
+  "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
   "",
   "Commands:",
-  "  impact    Analyze changed files and select impacted E2E tests"
+  "  impact    Analyze changed files and select impacted E2E tests",
+  "  run       Select impacted E2E tests and execute a command"
 ].join("\n");
 
 const impactHelpText = [
@@ -54,6 +60,20 @@ const impactHelpText = [
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
 
+const runHelpText = [
+  "sniffler run",
+  "",
+  "Usage:",
+  "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
+  "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
+  "",
+  "Options:",
+  "  --base <ref>      Git base ref for changed-file discovery",
+  "  --head <ref>      Git head ref for changed-file discovery",
+  "  --changed <file>  Explicit changed file path (repeatable)",
+  "  --config <path>   Path to .sniffler/config.json"
+].join("\n");
+
 export const renderHelp = () => {
   return `${helpText}\n`;
 };
@@ -62,12 +82,19 @@ export const renderImpactHelp = () => {
   return `${impactHelpText}\n`;
 };
 
-type ParsedImpactArgs =
+export const renderRunHelp = () => {
+  return `${runHelpText}\n`;
+};
+
+type ParsedSelectionArgs =
   | { type: "help" }
   | { type: "error"; message: string }
   | { type: "input"; input: ImpactCommandInput };
 
-const parseImpactArgs = (args: ReadonlyArray<string>): ParsedImpactArgs => {
+const parseSelectionArgs = (
+  args: ReadonlyArray<string>,
+  allowFormat = true
+): ParsedSelectionArgs => {
   const input: ImpactCommandInput = {};
   const changedFiles: string[] = [];
 
@@ -129,6 +156,10 @@ const parseImpactArgs = (args: ReadonlyArray<string>): ParsedImpactArgs => {
     }
 
     if (argument === "--format") {
+      if (!allowFormat) {
+        return { type: "error", message: `Unknown option: ${argument}` };
+      }
+
       const value = args[index + 1];
       if (value === undefined || value.startsWith("-")) {
         return { type: "error", message: "--format requires a value" };
@@ -157,6 +188,51 @@ const parseImpactArgs = (args: ReadonlyArray<string>): ParsedImpactArgs => {
   return { type: "input", input };
 };
 
+type ParsedRunArgs =
+  | { type: "help" }
+  | { type: "error"; message: string }
+  | { type: "input"; input: RunCommandInput };
+
+const parseRunArgs = (args: ReadonlyArray<string>): ParsedRunArgs => {
+  const separatorIndex = args.indexOf("--");
+
+  if (separatorIndex === -1) {
+    if (args.includes("--help") || args.includes("-h")) {
+      return { type: "help" };
+    }
+
+    return { type: "error", message: "sniffler run requires a runner command after --" };
+  }
+
+  const selectionArgs = args.slice(0, separatorIndex);
+  const runnerArgs = args.slice(separatorIndex + 1);
+
+  if (runnerArgs.length === 0) {
+    return { type: "error", message: "sniffler run requires a runner command after --" };
+  }
+
+  const parsedSelectionArgs = parseSelectionArgs(selectionArgs, false);
+
+  if (parsedSelectionArgs.type !== "input") {
+    return parsedSelectionArgs;
+  }
+
+  const [command, ...rest] = runnerArgs;
+
+  if (command === undefined) {
+    return { type: "error", message: "sniffler run requires a runner command after --" };
+  }
+
+  return {
+    type: "input",
+    input: {
+      ...parsedSelectionArgs.input,
+      command,
+      args: rest
+    }
+  };
+};
+
 export const runCli = async (
   argv: ReadonlyArray<string>,
   io: CliIO = defaultCliIO,
@@ -170,7 +246,7 @@ export const runCli = async (
   }
 
   if (command === "impact") {
-    const parsed = parseImpactArgs(rest);
+    const parsed = parseSelectionArgs(rest);
 
     if (parsed.type === "help") {
       io.stdout(renderImpactHelp());
@@ -186,6 +262,30 @@ export const runCli = async (
     try {
       const result = await runImpactCommand(parsed.input, deps);
       io.stdout(result.output);
+      return { exitCode: result.exitCode };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr(`${message}\n`);
+      return { exitCode: 1 };
+    }
+  }
+
+  if (command === "run") {
+    const parsed = parseRunArgs(rest);
+
+    if (parsed.type === "help") {
+      io.stdout(renderRunHelp());
+      return { exitCode: 0 };
+    }
+
+    if (parsed.type === "error") {
+      io.stderr(`${parsed.message}\n`);
+      io.stdout(renderRunHelp());
+      return { exitCode: 1 };
+    }
+
+    try {
+      const result = await runRunCommand(parsed.input, deps);
       return { exitCode: result.exitCode };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
