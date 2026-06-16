@@ -140,6 +140,59 @@ describe("fixture-backed CLI coverage", () => {
     expect(output).toContain("e2e/routes.spec.ts");
     expect(output).toContain("packages/ui/src/features/card.ts -> apps/web/src/routes.ts");
   });
+
+  it("narrows barrel impacts to matching entity consumers", async () => {
+    const { result, output } = await runFixtureCli({
+      fixture: "barrel-entities",
+      argv: ["impact", "--changed", "src/sourceB.ts", "--format", "json"]
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(output)).toEqual({
+      changedFiles: ["src/sourceB.ts"],
+      affectedModules: [
+        "src/aliasB.ts",
+        "src/b.ts",
+        "src/barrel.ts",
+        "src/dynamicConsumer.ts",
+        "src/sourceB.ts"
+      ],
+      recommendedTests: [
+        {
+          test: "e2e/alias-b.spec.ts",
+          reasons: [
+            {
+              changedFile: "src/sourceB.ts",
+              declaredTarget: "src/aliasB.ts",
+              dependencyPath: ["src/sourceB.ts", "src/barrel.ts", "src/aliasB.ts"]
+            }
+          ]
+        },
+        {
+          test: "e2e/b.spec.ts",
+          reasons: [
+            {
+              changedFile: "src/sourceB.ts",
+              declaredTarget: "src/b.ts",
+              dependencyPath: ["src/sourceB.ts", "src/barrel.ts", "src/b.ts"]
+            }
+          ]
+        },
+        {
+          test: "e2e/dynamic.spec.ts",
+          reasons: [
+            {
+              changedFile: "src/sourceB.ts",
+              declaredTarget: "src/dynamicConsumer.ts",
+              dependencyPath: ["src/sourceB.ts", "src/barrel.ts", "src/dynamicConsumer.ts"]
+            }
+          ]
+        }
+      ],
+      warnings: []
+    });
+    expect(output).not.toContain("e2e/a.spec.ts");
+  });
 });
 
 describe("workspace package import fixture", () => {
@@ -181,7 +234,9 @@ describe("workspace package import fixture", () => {
       {
         from: "apps/web/src/routes.ts",
         to: "packages/ui",
-        resolver: "workspace-package"
+        resolver: "workspace-package",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
   });

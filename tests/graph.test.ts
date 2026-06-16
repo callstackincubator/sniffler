@@ -91,42 +91,58 @@ describe("graph traversal", () => {
       {
         from: "src/components/Button.tsx",
         to: "src/shared/helpers.ts",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/features/Analytics.tsx",
         to: "src/shared/helpers.ts",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/features/Dashboard.tsx",
         to: "src/features/Analytics.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/features/Summary.tsx",
         to: "src/features/Dashboard.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/CheckoutScreen.tsx",
         to: "src/components/Button.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/CheckoutScreen.tsx",
         to: "src/features/Analytics.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/Top.tsx",
         to: "src/features/Summary.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/Top.tsx",
         to: "src/screens/CheckoutScreen.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
 
@@ -240,7 +256,9 @@ describe("graph traversal", () => {
       {
         from: "apps/web/src/routes.ts",
         to: "packages/shared/src/button.ts",
-        resolver: "tsconfig-paths"
+        resolver: "tsconfig-paths",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
 

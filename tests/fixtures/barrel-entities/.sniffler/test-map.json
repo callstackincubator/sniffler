@@ -1,0 +1,8 @@
+{
+  "tests": [
+    { "test": "e2e/a.spec.ts", "targets": ["src/a.ts"] },
+    { "test": "e2e/b.spec.ts", "targets": ["src/b.ts"] },
+    { "test": "e2e/alias-b.spec.ts", "targets": ["src/aliasB.ts"] },
+    { "test": "e2e/dynamic.spec.ts", "targets": ["src/dynamicConsumer.ts"] }
+  ]
+}

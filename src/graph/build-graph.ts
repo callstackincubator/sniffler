@@ -6,7 +6,7 @@ import { resolveImport, type ResolveContext } from "../resolvers/resolve-import.
 import { tsconfigPathsResolver } from "../resolvers/tsconfig-paths-resolver.js";
 import { workspacePackageResolver } from "../resolvers/workspace-package-resolver.js";
 import { packageExportsResolver } from "../resolvers/package-exports-resolver.js";
-import type { ScanResult } from "../scanner/scanner-types.js";
+import type { RawExport, ScanResult } from "../scanner/scanner-types.js";
 
 export type GraphNode = {
   path: string;
@@ -78,7 +78,66 @@ export const buildGraph = async (
       edges.push({
         from: node.path,
         to: result.path,
-        resolver: result.resolver
+        resolver: result.resolver,
+        entities: dependency.entities,
+        reExports: null
+      });
+    }
+
+    for (const exported of node.scan.exports) {
+      if (exported.kind === "local") {
+        continue;
+      }
+
+      const result = await resolveImport(
+        exported.specifier,
+        node.path,
+        {
+          ...resolveContext,
+          importKind: "import"
+        },
+        [
+          relativeResolver,
+          tsconfigPathsResolver,
+          packageExportsResolver,
+          workspacePackageResolver
+        ]
+      );
+
+      if (result.type !== "resolved") {
+        continue;
+      }
+
+      if (exported.kind === "re-export") {
+        edges.push({
+          from: node.path,
+          to: result.path,
+          resolver: result.resolver,
+          entities: {
+            type: "named",
+            entities: [
+              {
+                imported: exported.imported,
+                local: exported.exported === exported.imported ? undefined : exported.exported
+              }
+            ]
+          },
+          reExports: [
+            {
+              imported: exported.imported,
+              exported: exported.exported
+            }
+          ]
+        });
+        continue;
+      }
+
+      edges.push({
+        from: node.path,
+        to: result.path,
+        resolver: result.resolver,
+        entities: { type: "all" },
+        reExports: { type: "all" }
       });
     }
   }
@@ -96,7 +155,17 @@ export const buildGraph = async (
         return toComparison;
       }
 
-      return left.resolver.localeCompare(right.resolver);
+      const resolverComparison = left.resolver.localeCompare(right.resolver);
+      if (resolverComparison !== 0) {
+        return resolverComparison;
+      }
+
+      const entityComparison = JSON.stringify(left.entities).localeCompare(JSON.stringify(right.entities));
+      if (entityComparison !== 0) {
+        return entityComparison;
+      }
+
+      return JSON.stringify(left.reExports).localeCompare(JSON.stringify(right.reExports));
     })
   };
 };

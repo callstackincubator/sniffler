@@ -17,16 +17,20 @@ const validCache: GraphCache = {
         imports: [
           {
             specifier: "./shared.ts",
-            kind: "import"
+            kind: "import",
+            entities: { type: "all" }
           }
         ],
+        exports: [],
         warnings: []
       },
       resolvedEdges: [
         {
           from: "src/app.ts",
           to: "src/shared.ts",
-          resolver: "relative"
+          resolver: "relative",
+          entities: { type: "all" },
+          reExports: null
         }
       ]
     }
