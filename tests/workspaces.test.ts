@@ -63,6 +63,25 @@ describe("packageJsonWorkspacesStrategy", () => {
       }
     ]);
   });
+
+  it("keeps workspace roots relative when discovery runs from an absolute workspace root", async () => {
+    const fs = createMemoryFileSystem({
+      "/repo/package.json": JSON.stringify({
+        workspaces: ["apps/*"]
+      }),
+      "/repo/apps/web/package.json": JSON.stringify({
+        name: "@acme/web"
+      })
+    });
+
+    await expect(packageJsonWorkspacesStrategy.discover("/repo", fs)).resolves.toEqual([
+      {
+        name: "@acme/web",
+        root: "apps/web",
+        packageJsonPath: "apps/web/package.json"
+      }
+    ]);
+  });
 });
 
 describe("pnpmWorkspaceStrategy", () => {
@@ -114,6 +133,34 @@ describe("pnpmWorkspaceStrategy", () => {
     });
 
     await expect(pnpmWorkspaceStrategy.discover(".", fs)).resolves.toEqual([
+      {
+        name: "@acme/root",
+        root: ".",
+        packageJsonPath: "package.json"
+      },
+      {
+        name: "@acme/ui",
+        root: "packages/ui",
+        packageJsonPath: "packages/ui/package.json"
+      }
+    ]);
+  });
+
+  it("keeps pnpm workspace roots relative when discovery runs from an absolute workspace root", async () => {
+    const fs = createMemoryFileSystem({
+      "/repo/package.json": JSON.stringify({
+        name: "@acme/root"
+      }),
+      "/repo/pnpm-workspace.yaml": [
+        "packages:",
+        "  - 'packages/*'"
+      ].join("\n"),
+      "/repo/packages/ui/package.json": JSON.stringify({
+        name: "@acme/ui"
+      })
+    });
+
+    await expect(pnpmWorkspaceStrategy.discover("/repo", fs)).resolves.toEqual([
       {
         name: "@acme/root",
         root: ".",

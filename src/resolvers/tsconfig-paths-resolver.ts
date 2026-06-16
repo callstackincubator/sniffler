@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
 import { normalizePath } from "../filesystem/path-utils.js";
 import { resolveSourceFileCandidate } from "./source-file-candidate.js";
@@ -13,6 +13,16 @@ const resolveCandidate = async (candidate: string, context: ResolveContext): Pro
     fs: context.fs,
     sourceExtensions: context.sourceExtensions
   });
+};
+
+const reportResolvedPath = (resolvedPath: string, baseUrl?: string): string => {
+  const normalizedResolvedPath = normalizePath(resolvedPath);
+
+  if (baseUrl !== undefined && isAbsolute(baseUrl) && isAbsolute(normalizedResolvedPath)) {
+    return normalizePath(relative(baseUrl, normalizedResolvedPath));
+  }
+
+  return normalizedResolvedPath;
 };
 
 const matchPattern = async (
@@ -35,7 +45,7 @@ const matchPattern = async (
       const candidate = normalizePath(join(root, replacement));
       const resolved = await resolveCandidate(candidate, context);
       if (resolved !== undefined) {
-        return resolved;
+        return reportResolvedPath(resolved, baseUrl);
       }
     }
 
@@ -56,7 +66,7 @@ const matchPattern = async (
     const candidate = normalizePath(join(root, replacement.replace("*", matched)));
     const resolved = await resolveCandidate(candidate, context);
     if (resolved !== undefined) {
-      return resolved;
+      return reportResolvedPath(resolved, baseUrl);
     }
   }
 

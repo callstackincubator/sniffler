@@ -83,7 +83,7 @@ export const pnpmWorkspaceStrategy: WorkspaceStrategy = {
     const workspaceYaml = await fs.readFile(workspacePath);
     const rootPackageJsonPath = root === "." ? "package.json" : `${root}/package.json`;
     const rootPackage = (await fs.exists(rootPackageJsonPath))
-      ? await readWorkspacePackage(rootPackageJsonPath, fs)
+      ? await readWorkspacePackage(rootPackageJsonPath, fs, root)
       : undefined;
     const discoveredPackages = await discoverWorkspacePackagesFromPatterns(
       root,

@@ -98,6 +98,30 @@ describe("tsconfigPathsResolver", () => {
     });
   });
 
+  it("reports absolute tsconfig alias targets as relative paths", async () => {
+    const fs = createMemoryFileSystem({
+      "/repo/src/components/TextInput/index.tsx": "export const TextInput = true;"
+    });
+
+    const context = {
+      fs,
+      tsconfigPaths: {
+        baseUrl: "/repo",
+        paths: {
+          "@components/*": ["src/components/*"]
+        }
+      }
+    };
+
+    await expect(
+      tsconfigPathsResolver.resolve("@components/TextInput", "/repo/src/pages/Onboarding.tsx", context)
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/TextInput/index.tsx",
+      resolver: "tsconfig-paths"
+    });
+  });
+
   it("prefers the first configured extension when probing directory indexes", async () => {
     const fs = createMemoryFileSystem({
       "src/components/Button/index.ts": "export const Button = true;",
