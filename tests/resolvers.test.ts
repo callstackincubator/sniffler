@@ -48,6 +48,81 @@ describe("tsconfigPathsResolver", () => {
       }
     );
   });
+
+  it("prefers exact files over directory indexes and respects configured source extensions", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.tsx": "export const Button = true;",
+      "src/components/Button/index.ts": "export const Button = true;",
+      "src/components/Button/index.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      sourceExtensions: [".ts", ".tsx"],
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@components/*": ["src/components/*"]
+        }
+      }
+    };
+
+    await expect(
+      tsconfigPathsResolver.resolve("@components/Button", "src/app.ts", context)
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.tsx",
+      resolver: "tsconfig-paths"
+    });
+  });
+
+  it("falls back to an index file when the alias target is a directory", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button/index.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@components/*": ["src/components/*"]
+        }
+      }
+    };
+
+    await expect(tsconfigPathsResolver.resolve("@components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button/index.tsx",
+      resolver: "tsconfig-paths"
+    });
+  });
+
+  it("prefers the first configured extension when probing directory indexes", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button/index.ts": "export const Button = true;",
+      "src/components/Button/index.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      sourceExtensions: [".ts", ".tsx"],
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@components/*": ["src/components/*"]
+        }
+      }
+    };
+
+    await expect(
+      tsconfigPathsResolver.resolve("@components/Button", "src/app.ts", context)
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button/index.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
 });
 
 describe("workspacePackageResolver", () => {

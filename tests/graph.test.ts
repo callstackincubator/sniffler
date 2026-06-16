@@ -276,4 +276,74 @@ describe("graph traversal", () => {
       ]
     });
   });
+
+  it("resolves tsconfig aliases to source entry files and keeps impact traversal anchored to the entry file", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button/index.tsx": "export const Button = true;",
+      "src/app.ts": 'import "@components/Button";',
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: {
+            "@components/*": ["src/components/*"]
+          }
+        }
+      })
+    });
+
+    const graph = await buildGraph(
+      [
+        {
+          path: "src/components/Button/index.tsx",
+          scan: scanFileText({
+            filePath: "src/components/Button/index.tsx",
+            text: "export const Button = true;"
+          })
+        },
+        {
+          path: "src/app.ts",
+          scan: scanFileText({
+            filePath: "src/app.ts",
+            text: 'import "@components/Button";'
+          })
+        }
+      ],
+      {
+        resolveContext: {
+          fs,
+          sourceExtensions: [".ts", ".tsx"],
+          tsconfigPaths: {
+            baseUrl: ".",
+            paths: {
+              "@components/*": ["src/components/*"]
+            }
+          }
+        }
+      }
+    );
+
+    expect(graph.edges).toEqual([
+      {
+        from: "src/app.ts",
+        to: "src/components/Button/index.tsx",
+        resolver: "tsconfig-paths",
+        entities: { type: "all" },
+        reExports: null
+      }
+    ]);
+
+    expect(await traverseImpact(graph, ["src/components/Button/index.tsx"])).toEqual({
+      affectedModules: ["src/components/Button/index.tsx", "src/app.ts"],
+      paths: [
+        {
+          module: "src/components/Button/index.tsx",
+          path: ["src/components/Button/index.tsx"]
+        },
+        {
+          module: "src/app.ts",
+          path: ["src/components/Button/index.tsx", "src/app.ts"]
+        }
+      ]
+    });
+  });
 });

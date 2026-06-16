@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 
 import { normalizePath } from "../filesystem/path-utils.js";
+import { resolveSourceFileCandidate } from "./source-file-candidate.js";
 import type { ResolveContext, ResolveResult, Resolver } from "./resolve-import.js";
 
 const isRelativeOrAbsolute = (specifier: string): boolean => {
@@ -8,21 +9,10 @@ const isRelativeOrAbsolute = (specifier: string): boolean => {
 };
 
 const resolveCandidate = async (candidate: string, context: ResolveContext): Promise<string | undefined> => {
-  const normalizedCandidate = normalizePath(candidate);
-
-  if (await context.fs.exists(normalizedCandidate)) {
-    return normalizedCandidate;
-  }
-
-  const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"];
-  for (const extension of extensions) {
-    const extendedCandidate = `${normalizedCandidate}${extension}`;
-    if (await context.fs.exists(extendedCandidate)) {
-      return normalizePath(extendedCandidate);
-    }
-  }
-
-  return undefined;
+  return resolveSourceFileCandidate(candidate, {
+    fs: context.fs,
+    sourceExtensions: context.sourceExtensions
+  });
 };
 
 const matchPattern = async (

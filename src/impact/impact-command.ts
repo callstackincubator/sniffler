@@ -250,6 +250,7 @@ export const runImpactCommand = async (
     resolveContext: {
       fs,
       workspacePackages,
+      sourceExtensions: config.source?.extensions,
       tsconfigPaths,
       conditions: config.resolver?.conditions
     }
