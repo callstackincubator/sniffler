@@ -7,6 +7,7 @@ Sniffler is a standalone TypeScript CLI for selecting impacted E2E tests from a 
 ```bash
 pnpm build
 pnpm test
+pnpm benchmark
 pnpm lint
 ```
 
