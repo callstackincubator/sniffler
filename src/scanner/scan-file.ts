@@ -100,7 +100,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
   };
 
   const startsWithWord = (word: string): boolean => {
-    if (text.slice(state.index, state.index + word.length) !== word) {
+    if (!text.startsWith(word, state.index)) {
       return false;
     }
 

@@ -217,6 +217,51 @@ describe("scanFileText", () => {
     ]);
   });
 
+  it("does not match keywords inside longer identifiers or import.meta", () => {
+    const result = scanFileText({
+      filePath: "src/boundaries.ts",
+      text: [
+        "const important = 1;",
+        "const exportsValue = 2;",
+        "const required = 3;",
+        "const meta = import.meta;",
+        'import value from "./module-a";',
+        'export { value as renamed } from "./module-b";',
+        'const loaded = require("./module-c");'
+      ].join("\n")
+    });
+
+    expect(result.imports.map(({ specifier, kind }) => ({ specifier, kind }))).toEqual([
+      {
+        specifier: "./module-a",
+        kind: "import"
+      },
+      {
+        specifier: "./module-c",
+        kind: "require"
+      }
+    ]);
+
+    expect(result.exports).toHaveLength(1);
+
+    const [reExport] = result.exports;
+    expect(reExport?.kind).toBe("re-export");
+
+    if (reExport?.kind !== "re-export") {
+      return;
+    }
+
+    expect(reExport.specifier).toBe("./module-b");
+    expect(reExport.imported).toBe("value");
+    expect(reExport.exported).toBe("renamed");
+    expect(reExport.loc).toEqual({
+      line: 6,
+      column: 34
+    });
+
+    expect(result.warnings).toEqual([]);
+  });
+
   it("returns deterministic output for identical input", () => {
     const input = {
       filePath: "src/example.ts",
