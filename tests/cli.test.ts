@@ -299,6 +299,39 @@ describe("CLI run command", () => {
     expect(output).toEqual([]);
   });
 
+  it("appends selected tests to the runner args in base/head mode", async () => {
+    const fs = createFixtureFileSystem();
+    const gitDiff = vi.fn(async () => ["src/shared.ts"]);
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["run", "--base", "origin/main", "--head", "HEAD", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: ".", gitDiff, runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(gitDiff).toHaveBeenCalledWith({
+      base: "origin/main",
+      head: "HEAD",
+      cwd: expect.any(String)
+    });
+    expect(runner).toHaveBeenCalledWith({
+      command: "pnpm",
+      args: ["vitest", "run", "e2e/feature.spec.ts"],
+      cwd: expect.any(String)
+    });
+    expect(output).toEqual([]);
+  });
+
   it("returns the runner exit code", async () => {
     const fs = createFixtureFileSystem();
     const runner = vi.fn(async () => ({ exitCode: 7 }));

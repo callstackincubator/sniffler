@@ -14,8 +14,9 @@ pnpm lint
 ```bash
 sniffler impact --base origin/main --head HEAD
 sniffler impact --base origin/main --head HEAD --format json
-sniffler impact --changed src/components/Button.tsx
+sniffler impact src/components/Button.tsx
 sniffler run --base origin/main --head HEAD -- pnpm vitest run
+sniffler run src/components/Button.tsx -- pnpm vitest run
 ```
 
 `sniffler run` appends impacted test files to the runner command and exits with the runner's exit code.
