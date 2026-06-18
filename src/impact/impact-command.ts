@@ -1,4 +1,9 @@
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
+import { SCANNER_VERSION, getCacheConfigHash } from "../cache/cache-key.js";
+import type { CacheEntry, GraphCache, ResolvedEdge } from "../cache/cache-types.js";
+import { loadCache } from "../cache/load-cache.js";
+import { saveCache } from "../cache/save-cache.js";
 import type { SnifflerConfig, SnifflerOutputFormat } from "../config/config-schema.js";
 import { loadConfig } from "../config/load-config.js";
 import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
@@ -47,6 +52,10 @@ export type ImpactCommandDeps = {
 
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+};
+
+const hashText = (text: string): string => {
+  return createHash("sha256").update(text).digest("hex");
 };
 
 const getFs = (deps: ImpactCommandDeps): FileSystem => {
@@ -223,6 +232,15 @@ export const selectImpact = async (
   const fs = getFs(deps);
   const cwd = getCwd(deps);
   const config = (await loadConfig({ fs, configPath: input.configPath })).config;
+  const configHash = getCacheConfigHash(config);
+  const cachePath = config.cache?.path === undefined ? undefined : normalizePath(join(cwd, config.cache.path));
+  const cache =
+    cachePath === undefined
+      ? null
+      : await loadCache(fs, cachePath, {
+          configHash,
+          scannerVersion: SCANNER_VERSION
+        });
   const changedFiles = await resolveChangedFilesFromGit(input, deps, cwd);
   const workspaceStrategies = [
     ...(config.workspaces?.strategies?.includes("package-json") ? [packageJsonWorkspacesStrategy] : []),
@@ -233,10 +251,23 @@ export const selectImpact = async (
   const sourceFiles = await discoverSourceFiles(fs, cwd, config);
   const scanWarnings: string[] = [];
   const graphNodes: GraphNode[] = [];
+  const cacheEntries = cache?.files ?? {};
+  const contentHashes = new Map<string, string>();
+  let cacheNeedsRefresh = cache === null;
 
   for (const path of sourceFiles) {
     const text = await fs.readFile(path);
-    const scan = scanFileText({ filePath: path, text });
+    const contentHash = hashText(text);
+    contentHashes.set(path, contentHash);
+    const cacheEntry = cacheEntries[path];
+    const scan =
+      cacheEntry !== undefined && cacheEntry.contentHash === contentHash
+        ? cacheEntry.scan
+        : scanFileText({ filePath: path, text });
+
+    if (cacheEntry === undefined || cacheEntry.contentHash !== contentHash) {
+      cacheNeedsRefresh = true;
+    }
 
     for (const warning of scan.warnings) {
       scanWarnings.push(warning.message);
@@ -257,6 +288,49 @@ export const selectImpact = async (
       conditions: config.resolver?.conditions
     }
   });
+
+  if (cachePath !== undefined && cache !== null && Object.keys(cacheEntries).length !== sourceFiles.length) {
+    cacheNeedsRefresh = true;
+  }
+
+  if (cachePath !== undefined && cacheNeedsRefresh) {
+    const resolvedEdgesByFrom = new Map<string, Array<ResolvedEdge>>();
+
+    for (const edge of graph.edges) {
+      const existing = resolvedEdgesByFrom.get(edge.from);
+
+      if (existing === undefined) {
+        resolvedEdgesByFrom.set(edge.from, [edge]);
+        continue;
+      }
+
+      existing.push(edge);
+    }
+
+    const nextCache: GraphCache = {
+      version: 1,
+      configHash,
+      scannerVersion: SCANNER_VERSION,
+      files: Object.fromEntries(
+        graph.nodes.map((node) => {
+          const entry: CacheEntry = {
+            path: node.path,
+            contentHash: contentHashes.get(node.path) ?? "",
+            scan: node.scan,
+            resolvedEdges: resolvedEdgesByFrom.get(node.path) ?? []
+          };
+
+          return [node.path, entry];
+        })
+      )
+    };
+
+    try {
+      await saveCache(fs, cachePath, nextCache);
+    } catch {
+      // Ignore cache write failure. Impact result must still complete.
+    }
+  }
 
   const impact = await traverseImpact(graph, changedFiles);
   const testMap = await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));

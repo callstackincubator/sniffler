@@ -64,6 +64,19 @@ describe("cache", () => {
     ).resolves.toBeNull();
   });
 
+  it("discards cache data when the scanner version changes", async () => {
+    const fs = createMemoryFileSystem({
+      ".sniffler/cache.json": JSON.stringify(validCache)
+    });
+
+    await expect(
+      loadCache(fs, ".sniffler/cache.json", {
+        configHash: "config-hash-1",
+        scannerVersion: "scanner-2"
+      })
+    ).resolves.toBeNull();
+  });
+
   it("returns null for missing or malformed cache files", async () => {
     const fs = createMemoryFileSystem({
       ".sniffler/cache.json": "{"
