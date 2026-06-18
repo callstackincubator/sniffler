@@ -27,16 +27,63 @@ type NamedBinding = {
 
 type DelimiterMode = "statement" | "call" | "variable";
 
+const isAsciiLetter = (code: number): boolean => {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+};
+
 const isIdentifierStart = (char: string | undefined): boolean => {
-  return char !== undefined && /[A-Za-z_$]/.test(char);
+  if (char === undefined) {
+    return false;
+  }
+
+  const code = char.charCodeAt(0);
+  return code === 36 || code === 95 || isAsciiLetter(code);
 };
 
 const isIdentifierChar = (char: string | undefined): boolean => {
-  return char !== undefined && /[A-Za-z0-9_$]/.test(char);
+  if (char === undefined) {
+    return false;
+  }
+
+  const code = char.charCodeAt(0);
+  return code === 36 || code === 95 || (code >= 48 && code <= 57) || isAsciiLetter(code);
 };
 
 const isWhitespace = (char: string | undefined): boolean => {
-  return char !== undefined && /\s/.test(char);
+  if (char === undefined) {
+    return false;
+  }
+
+  switch (char.charCodeAt(0)) {
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 32:
+    case 160:
+    case 5760:
+    case 8192:
+    case 8193:
+    case 8194:
+    case 8195:
+    case 8196:
+    case 8197:
+    case 8198:
+    case 8199:
+    case 8200:
+    case 8201:
+    case 8202:
+    case 8232:
+    case 8233:
+    case 8239:
+    case 8287:
+    case 12288:
+    case 65279:
+      return true;
+    default:
+      return false;
+  }
 };
 
 const createWarningMessage = (filePath: string | undefined, line: number, kind: "import" | "require"): string => {

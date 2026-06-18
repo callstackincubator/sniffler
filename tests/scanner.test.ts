@@ -217,6 +217,63 @@ describe("scanFileText", () => {
     ]);
   });
 
+  it("handles tabs, CRLF line endings, and identifier boundaries", () => {
+    const result = scanFileText({
+      filePath: "src/whitespace.ts",
+      text: [
+        'import\tvalue\tfrom\t"./tabbed";\r\n',
+        'const imported = 1;\r\n',
+        'await import\t("./dynamic");\r\n',
+        'const requirement = 2;\r\n',
+        'export\t{ imported as renamed }\tfromage\t"./ignored";\r\n',
+        'export\t{ imported as renamed }\tfrom\t"./reexport";\r\n'
+      ].join("")
+    });
+
+    expect(result.imports).toEqual([
+      {
+        specifier: "./tabbed",
+        kind: "import",
+        loc: { line: 1, column: 19 },
+        entities: {
+          type: "named",
+          entities: [
+            {
+              imported: "default",
+              local: "value"
+            }
+          ]
+        }
+      },
+      {
+        specifier: "./dynamic",
+        kind: "dynamic-import",
+        loc: { line: 3, column: 15 },
+        entities: {
+          type: "all"
+        }
+      }
+    ]);
+
+    expect(result.exports).toEqual([
+      {
+        kind: "local",
+        exported: "renamed",
+        local: "imported",
+        loc: { line: 5, column: 1 }
+      },
+      {
+        kind: "re-export",
+        specifier: "./reexport",
+        imported: "imported",
+        exported: "renamed",
+        loc: { line: 6, column: 37 }
+      }
+    ]);
+
+    expect(result.warnings).toEqual([]);
+  });
+
   it("scans exported variable declarations with nested delimiters", () => {
     const result = scanFileText({
       filePath: "src/variables.ts",
