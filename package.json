@@ -1,7 +1,7 @@
 {
   "name": "sniffler",
   "version": "0.0.0",
-  "description": "E2E impact selector for JavaScript and TypeScript projects.",
+  "description": "Sniffler sniffs out the E2E tests your changes actually wake up.",
   "type": "module",
   "bin": {
     "sniffler": "./dist/cli.js"
