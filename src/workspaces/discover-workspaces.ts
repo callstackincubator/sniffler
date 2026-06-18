@@ -1,5 +1,5 @@
 import type { FileSystem } from "../filesystem/filesystem.js";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { normalizePath } from "../filesystem/path-utils.js";
 
 export type WorkspacePackage = {
@@ -36,7 +36,8 @@ export const toWorkspacePackageJsonPattern = (pattern: string): string => {
 
 export const readWorkspacePackage = async (
   packageJsonPath: string,
-  fs: FileSystem
+  fs: FileSystem,
+  workspaceRoot?: string
 ): Promise<WorkspacePackage | undefined> => {
   const packageJson = await fs.readJson<PackageJsonFile>(packageJsonPath);
 
@@ -44,14 +45,25 @@ export const readWorkspacePackage = async (
     return undefined;
   }
 
-  const root = normalizePath(dirname(packageJsonPath));
+  const normalizedPackageJsonPath = normalizePath(packageJsonPath);
+  const root =
+    workspaceRoot !== undefined && isAbsolute(workspaceRoot) && isAbsolute(normalizedPackageJsonPath)
+      ? normalizePath(relative(workspaceRoot, dirname(normalizedPackageJsonPath)))
+      : normalizePath(dirname(normalizedPackageJsonPath));
   const tsconfigPath = normalizePath(join(root, "tsconfig.json"));
-  const hasTsconfig = await fs.exists(tsconfigPath);
+  const tsconfigProbePath =
+    workspaceRoot !== undefined && isAbsolute(workspaceRoot) && isAbsolute(normalizedPackageJsonPath)
+      ? normalizePath(join(workspaceRoot, tsconfigPath))
+      : tsconfigPath;
+  const hasTsconfig = await fs.exists(tsconfigProbePath);
 
   return {
     name: packageJson.name,
     root,
-    packageJsonPath: normalizePath(packageJsonPath),
+    packageJsonPath:
+      workspaceRoot !== undefined && isAbsolute(workspaceRoot) && isAbsolute(normalizedPackageJsonPath)
+        ? normalizePath(relative(workspaceRoot, normalizedPackageJsonPath))
+        : normalizedPackageJsonPath,
     ...(hasTsconfig ? { tsconfigPath } : {}),
     ...("exports" in packageJson ? { exports: packageJson.exports } : {})
   };
@@ -78,7 +90,7 @@ export const discoverWorkspacePackagesFromPatterns = async (
   const packages: WorkspacePackage[] = [];
 
   for (const packageJsonPath of packageJsonPaths.filter((path) => !excludedPaths.has(path))) {
-    const workspacePackage = await readWorkspacePackage(normalizePath(join(root, packageJsonPath)), fs);
+    const workspacePackage = await readWorkspacePackage(normalizePath(join(root, packageJsonPath)), fs, root);
 
     if (workspacePackage !== undefined) {
       packages.push(workspacePackage);

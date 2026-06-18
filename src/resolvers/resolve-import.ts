@@ -13,6 +13,7 @@ export type ResolveImportKind = "import" | "require";
 export type ResolveContext = {
   fs: FileSystem;
   workspacePackages?: ReadonlyArray<WorkspacePackage>;
+  sourceExtensions?: ReadonlyArray<string>;
   tsconfigPaths?: TsconfigPathsConfig;
   conditions?: {
     import?: ReadonlyArray<string>;

@@ -1,0 +1,13 @@
+{
+  "source": {
+    "roots": ["src"],
+    "extensions": [".ts"],
+    "ignore": []
+  },
+  "tests": {
+    "manifest": ".sniffler/test-map.json"
+  },
+  "output": {
+    "format": "text"
+  }
+}

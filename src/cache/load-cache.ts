@@ -5,12 +5,51 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 };
 
+const isSourceLocation = (value: unknown): boolean => {
+  return isRecord(value) && typeof value.line === "number" && typeof value.column === "number";
+};
+
+const isEntitySelection = (value: unknown): boolean => {
+  if (!isRecord(value) || (value.type !== "all" && value.type !== "named")) {
+    return false;
+  }
+
+  if (value.type === "all") {
+    return true;
+  }
+
+  return (
+    Array.isArray(value.entities) &&
+    value.entities.every((entity) => {
+      if (!isRecord(entity) || typeof entity.imported !== "string") {
+        return false;
+      }
+
+      return entity.local === undefined || typeof entity.local === "string";
+    })
+  );
+};
+
 const isResolvedEdge = (value: unknown): value is ResolvedEdge => {
+  const reExportsIsValid =
+    value !== null &&
+    isRecord(value) &&
+    "reExports" in value &&
+    (value.reExports === null ||
+      (isRecord(value.reExports) &&
+        value.reExports.type === "all") ||
+      (Array.isArray(value.reExports) &&
+        value.reExports.every(
+          (item) => isRecord(item) && typeof item.imported === "string" && typeof item.exported === "string"
+        )));
+
   return (
     isRecord(value) &&
     typeof value.from === "string" &&
     typeof value.to === "string" &&
-    typeof value.resolver === "string"
+    typeof value.resolver === "string" &&
+    isEntitySelection(value.entities) &&
+    reExportsIsValid
   );
 };
 
@@ -36,26 +75,51 @@ const isScanResult = (value: unknown): boolean => {
       return false;
     }
 
-    if (typeof item.specifier !== "string" || !isRawImportKind(item.kind)) {
+    if (typeof item.specifier !== "string" || !isRawImportKind(item.kind) || !isEntitySelection(item.entities)) {
       return false;
     }
 
-    return item.loc === undefined || (
-      isRecord(item.loc) &&
-      typeof item.loc.line === "number" &&
-      typeof item.loc.column === "number"
-    );
+    return item.loc === undefined || isSourceLocation(item.loc);
   }) &&
+    Array.isArray(value.exports) &&
+    value.exports.every((item) => {
+      if (!isRecord(item) || typeof item.kind !== "string") {
+        return false;
+      }
+
+      if (item.kind === "local") {
+        return (
+          typeof item.exported === "string" &&
+          (item.local === undefined || typeof item.local === "string") &&
+          (item.loc === undefined || isSourceLocation(item.loc))
+        );
+      }
+
+      if (item.kind === "re-export") {
+        return (
+          typeof item.specifier === "string" &&
+          typeof item.imported === "string" &&
+          typeof item.exported === "string" &&
+          (item.loc === undefined || isSourceLocation(item.loc))
+        );
+      }
+
+      if (item.kind === "re-export-all") {
+        return (
+          typeof item.specifier === "string" &&
+          (item.exportedNamespace === undefined || typeof item.exportedNamespace === "string") &&
+          (item.loc === undefined || isSourceLocation(item.loc))
+        );
+      }
+
+      return false;
+    }) &&
     value.warnings.every((item) => {
       if (!isRecord(item) || !isScanWarningType(item.type) || typeof item.message !== "string") {
         return false;
       }
 
-      return item.loc === undefined || (
-        isRecord(item.loc) &&
-        typeof item.loc.line === "number" &&
-        typeof item.loc.column === "number"
-      );
+      return item.loc === undefined || isSourceLocation(item.loc);
     });
 };
 

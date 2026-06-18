@@ -1,9 +1,19 @@
-import type { ScanResult } from "../scanner/scanner-types.js";
+import type { EntitySelection, RawExport, ScanResult } from "../scanner/scanner-types.js";
 
 export type ResolvedEdge = {
   from: string;
   to: string;
   resolver: string;
+  entities: EntitySelection;
+  reExports:
+    | ReadonlyArray<{
+        imported: string;
+        exported: string;
+      }>
+    | {
+        type: "all";
+      }
+    | null;
 };
 
 export type CacheEntry = {

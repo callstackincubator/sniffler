@@ -179,7 +179,9 @@ describe("package exports integration", () => {
       {
         from: "apps/web/src/routes.ts",
         to: "packages/ui/src/button.ts",
-        resolver: "package-exports"
+        resolver: "package-exports",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
   });

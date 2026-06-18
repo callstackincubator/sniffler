@@ -1,6 +1,7 @@
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
 import { normalizePath } from "../filesystem/path-utils.js";
+import { resolveSourceFileCandidate } from "./source-file-candidate.js";
 import type { ResolveContext, ResolveResult, Resolver } from "./resolve-import.js";
 
 const isRelativeOrAbsolute = (specifier: string): boolean => {
@@ -8,21 +9,20 @@ const isRelativeOrAbsolute = (specifier: string): boolean => {
 };
 
 const resolveCandidate = async (candidate: string, context: ResolveContext): Promise<string | undefined> => {
-  const normalizedCandidate = normalizePath(candidate);
+  return resolveSourceFileCandidate(candidate, {
+    fs: context.fs,
+    sourceExtensions: context.sourceExtensions
+  });
+};
 
-  if (await context.fs.exists(normalizedCandidate)) {
-    return normalizedCandidate;
+const reportResolvedPath = (resolvedPath: string, baseUrl?: string): string => {
+  const normalizedResolvedPath = normalizePath(resolvedPath);
+
+  if (baseUrl !== undefined && isAbsolute(baseUrl) && isAbsolute(normalizedResolvedPath)) {
+    return normalizePath(relative(baseUrl, normalizedResolvedPath));
   }
 
-  const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"];
-  for (const extension of extensions) {
-    const extendedCandidate = `${normalizedCandidate}${extension}`;
-    if (await context.fs.exists(extendedCandidate)) {
-      return normalizePath(extendedCandidate);
-    }
-  }
-
-  return undefined;
+  return normalizedResolvedPath;
 };
 
 const matchPattern = async (
@@ -45,7 +45,7 @@ const matchPattern = async (
       const candidate = normalizePath(join(root, replacement));
       const resolved = await resolveCandidate(candidate, context);
       if (resolved !== undefined) {
-        return resolved;
+        return reportResolvedPath(resolved, baseUrl);
       }
     }
 
@@ -66,7 +66,7 @@ const matchPattern = async (
     const candidate = normalizePath(join(root, replacement.replace("*", matched)));
     const resolved = await resolveCandidate(candidate, context);
     if (resolved !== undefined) {
-      return resolved;
+      return reportResolvedPath(resolved, baseUrl);
     }
   }
 

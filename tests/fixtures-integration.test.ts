@@ -43,7 +43,7 @@ describe("fixture-backed CLI coverage", () => {
   it("renders text output and warnings from the single-package fixture", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "single-package",
-      argv: ["impact", "--changed", "src/shared.ts"]
+      argv: ["impact", "src/shared.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -89,7 +89,7 @@ describe("fixture-backed CLI coverage", () => {
   it("exits successfully when the single-package fixture has no mapped tests", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "single-package",
-      argv: ["impact", "--changed", "src/unrelated.ts"]
+      argv: ["impact", "src/unrelated.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -100,7 +100,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through package.json workspace discovery", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "package-json-workspaces",
-      argv: ["impact", "--changed", "packages/ui/src/button.ts"]
+      argv: ["impact", "packages/ui/src/button.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -111,7 +111,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through pnpm workspace discovery", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "pnpm-workspace",
-      argv: ["impact", "--changed", "packages/shared/src/button.ts"]
+      argv: ["impact", "packages/shared/src/button.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -122,7 +122,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through tsconfig paths", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "tsconfig-paths",
-      argv: ["impact", "--changed", "packages/shared/src/button.ts"]
+      argv: ["impact", "packages/shared/src/button.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -133,12 +133,65 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through package exports", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "package-exports",
-      argv: ["impact", "--changed", "packages/ui/src/features/card.ts"]
+      argv: ["impact", "packages/ui/src/features/card.ts"]
     });
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("e2e/routes.spec.ts");
     expect(output).toContain("packages/ui/src/features/card.ts -> apps/web/src/routes.ts");
+  });
+
+  it("narrows barrel impacts to matching entity consumers", async () => {
+    const { result, output } = await runFixtureCli({
+      fixture: "barrel-entities",
+      argv: ["impact", "src/sourceB.ts", "--format", "json"]
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(output)).toEqual({
+      changedFiles: ["src/sourceB.ts"],
+      affectedModules: [
+        "src/aliasB.ts",
+        "src/b.ts",
+        "src/barrel.ts",
+        "src/dynamicConsumer.ts",
+        "src/sourceB.ts"
+      ],
+      recommendedTests: [
+        {
+          test: "e2e/alias-b.spec.ts",
+          reasons: [
+            {
+              changedFile: "src/sourceB.ts",
+              declaredTarget: "src/aliasB.ts",
+              dependencyPath: ["src/sourceB.ts", "src/barrel.ts", "src/aliasB.ts"]
+            }
+          ]
+        },
+        {
+          test: "e2e/b.spec.ts",
+          reasons: [
+            {
+              changedFile: "src/sourceB.ts",
+              declaredTarget: "src/b.ts",
+              dependencyPath: ["src/sourceB.ts", "src/barrel.ts", "src/b.ts"]
+            }
+          ]
+        },
+        {
+          test: "e2e/dynamic.spec.ts",
+          reasons: [
+            {
+              changedFile: "src/sourceB.ts",
+              declaredTarget: "src/dynamicConsumer.ts",
+              dependencyPath: ["src/sourceB.ts", "src/barrel.ts", "src/dynamicConsumer.ts"]
+            }
+          ]
+        }
+      ],
+      warnings: []
+    });
+    expect(output).not.toContain("e2e/a.spec.ts");
   });
 });
 
@@ -181,7 +234,9 @@ describe("workspace package import fixture", () => {
       {
         from: "apps/web/src/routes.ts",
         to: "packages/ui",
-        resolver: "workspace-package"
+        resolver: "workspace-package",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
   });

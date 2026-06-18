@@ -91,42 +91,58 @@ describe("graph traversal", () => {
       {
         from: "src/components/Button.tsx",
         to: "src/shared/helpers.ts",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/features/Analytics.tsx",
         to: "src/shared/helpers.ts",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/features/Dashboard.tsx",
         to: "src/features/Analytics.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/features/Summary.tsx",
         to: "src/features/Dashboard.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/CheckoutScreen.tsx",
         to: "src/components/Button.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/CheckoutScreen.tsx",
         to: "src/features/Analytics.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/Top.tsx",
         to: "src/features/Summary.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       },
       {
         from: "src/screens/Top.tsx",
         to: "src/screens/CheckoutScreen.tsx",
-        resolver: "relative"
+        resolver: "relative",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
 
@@ -240,7 +256,9 @@ describe("graph traversal", () => {
       {
         from: "apps/web/src/routes.ts",
         to: "packages/shared/src/button.ts",
-        resolver: "tsconfig-paths"
+        resolver: "tsconfig-paths",
+        entities: { type: "all" },
+        reExports: null
       }
     ]);
 
@@ -254,6 +272,76 @@ describe("graph traversal", () => {
         {
           module: "apps/web/src/routes.ts",
           path: ["packages/shared/src/button.ts", "apps/web/src/routes.ts"]
+        }
+      ]
+    });
+  });
+
+  it("resolves tsconfig aliases to source entry files and keeps impact traversal anchored to the entry file", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button/index.tsx": "export const Button = true;",
+      "src/app.ts": 'import "@components/Button";',
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: {
+            "@components/*": ["src/components/*"]
+          }
+        }
+      })
+    });
+
+    const graph = await buildGraph(
+      [
+        {
+          path: "src/components/Button/index.tsx",
+          scan: scanFileText({
+            filePath: "src/components/Button/index.tsx",
+            text: "export const Button = true;"
+          })
+        },
+        {
+          path: "src/app.ts",
+          scan: scanFileText({
+            filePath: "src/app.ts",
+            text: 'import "@components/Button";'
+          })
+        }
+      ],
+      {
+        resolveContext: {
+          fs,
+          sourceExtensions: [".ts", ".tsx"],
+          tsconfigPaths: {
+            baseUrl: ".",
+            paths: {
+              "@components/*": ["src/components/*"]
+            }
+          }
+        }
+      }
+    );
+
+    expect(graph.edges).toEqual([
+      {
+        from: "src/app.ts",
+        to: "src/components/Button/index.tsx",
+        resolver: "tsconfig-paths",
+        entities: { type: "all" },
+        reExports: null
+      }
+    ]);
+
+    expect(await traverseImpact(graph, ["src/components/Button/index.tsx"])).toEqual({
+      affectedModules: ["src/components/Button/index.tsx", "src/app.ts"],
+      paths: [
+        {
+          module: "src/components/Button/index.tsx",
+          path: ["src/components/Button/index.tsx"]
+        },
+        {
+          module: "src/app.ts",
+          path: ["src/components/Button/index.tsx", "src/app.ts"]
         }
       ]
     });
