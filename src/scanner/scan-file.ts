@@ -1,3 +1,4 @@
+import { ALL_ENTITY_SELECTION } from "./scanner-types.js";
 import type {
   EntitySelection,
   RawExport,
@@ -24,16 +25,64 @@ type NamedBinding = {
   local?: string;
 };
 
+type DelimiterMode = "statement" | "call" | "variable";
+
+const isAsciiLetter = (code: number): boolean => {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+};
 const isIdentifierStart = (char: string | undefined): boolean => {
-  return char !== undefined && /[A-Za-z_$]/.test(char);
+  if (char === undefined) {
+    return false;
+  }
+
+  const code = char.charCodeAt(0);
+  return code === 36 || code === 95 || isAsciiLetter(code);
 };
 
 const isIdentifierChar = (char: string | undefined): boolean => {
-  return char !== undefined && /[A-Za-z0-9_$]/.test(char);
+  if (char === undefined) {
+    return false;
+  }
+
+  const code = char.charCodeAt(0);
+  return code === 36 || code === 95 || (code >= 48 && code <= 57) || isAsciiLetter(code);
 };
 
 const isWhitespace = (char: string | undefined): boolean => {
-  return char !== undefined && /\s/.test(char);
+  if (char === undefined) {
+    return false;
+  }
+
+  switch (char.charCodeAt(0)) {
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 32:
+    case 160:
+    case 5760:
+    case 8192:
+    case 8193:
+    case 8194:
+    case 8195:
+    case 8196:
+    case 8197:
+    case 8198:
+    case 8199:
+    case 8200:
+    case 8201:
+    case 8202:
+    case 8232:
+    case 8233:
+    case 8239:
+    case 8287:
+    case 12288:
+    case 65279:
+      return true;
+    default:
+      return false;
+  }
 };
 
 const createWarningMessage = (filePath: string | undefined, line: number, kind: "import" | "require"): string => {
@@ -48,6 +97,20 @@ const createNamedSelection = (entities: ReadonlyArray<NamedBinding>): EntitySele
   };
 };
 
+const isTopLevelDelimiter = (mode: DelimiterMode, char: string | undefined): boolean => {
+  if (char === undefined) {
+    return false;
+  }
+
+  switch (mode) {
+    case "statement":
+      return char === ";" || char === "\n";
+    case "call":
+      return char === ")";
+    case "variable":
+      return char === "," || char === ";" || char === "\n";
+  }
+};
 export const scanFileText = (input: ScanInput): ScanResult => {
   const text = input.text;
   const state: ScannerState = { index: 0, line: 1, column: 1 };
@@ -100,7 +163,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
   };
 
   const startsWithWord = (word: string): boolean => {
-    if (text.slice(state.index, state.index + word.length) !== word) {
+    if (!text.startsWith(word, state.index)) {
       return false;
     }
 
@@ -287,7 +350,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     return text.slice(start, state.index);
   };
 
-  const skipToTopLevelDelimiter = (delimiters: ReadonlySet<string>): void => {
+  const skipToTopLevelDelimiter = (mode: DelimiterMode): void => {
     let parenDepth = 0;
     let braceDepth = 0;
     let bracketDepth = 0;
@@ -332,8 +395,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
         parenDepth === 0 &&
         braceDepth === 0 &&
         bracketDepth === 0 &&
-        char !== undefined &&
-        delimiters.has(char)
+        isTopLevelDelimiter(mode, char)
       ) {
         return;
       }
@@ -385,7 +447,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
   };
 
   const finishStatement = (): void => {
-    skipToTopLevelDelimiter(new Set([";", "\n"]));
+    skipToTopLevelDelimiter("statement");
 
     if (currentChar() === ";" || currentChar() === "\n") {
       advance();
@@ -529,7 +591,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
     if (parsed === null) {
       emitWarning(kind, argumentLoc);
-      skipToTopLevelDelimiter(new Set([")"]));
+      skipToTopLevelDelimiter("call");
 
       if (currentChar() === ")") {
         advance();
@@ -542,10 +604,10 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       parsed.specifier,
       kind === "import" ? "dynamic-import" : "require",
       parsed.loc,
-      { type: "all" }
+      ALL_ENTITY_SELECTION
     );
 
-    skipToTopLevelDelimiter(new Set([")"]));
+    skipToTopLevelDelimiter("call");
 
     if (currentChar() === ")") {
       advance();
@@ -558,7 +620,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     if (currentChar() === "'" || currentChar() === '"' || currentChar() === "`") {
       const parsed = consumeLiteral();
       if (parsed !== null) {
-        emitImport(parsed.specifier, "import", parsed.loc, { type: "all" });
+        emitImport(parsed.specifier, "import", parsed.loc, ALL_ENTITY_SELECTION);
       }
       finishStatement();
       return;
@@ -594,7 +656,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       const parsed = consumeLiteral();
 
       if (parsed !== null) {
-        emitImport(parsed.specifier, "import", parsed.loc, { type: "all" });
+        emitImport(parsed.specifier, "import", parsed.loc, ALL_ENTITY_SELECTION);
       }
 
       finishStatement();
@@ -743,7 +805,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       if (name === null) {
         if (currentChar() === "=") {
           advance();
-          skipToTopLevelDelimiter(new Set([",", ";", "\n"]));
+          skipToTopLevelDelimiter("variable");
           continue;
         }
 
@@ -765,7 +827,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
       if (currentChar() === "=") {
         advance();
-        skipToTopLevelDelimiter(new Set([",", ";", "\n"]));
+        skipToTopLevelDelimiter("variable");
       }
 
       if (currentChar() === ",") {
@@ -920,52 +982,41 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
     const char = currentChar();
 
-    if (char === "'" || char === '"' || char === "`") {
-      const parsed = consumeLiteral();
-      if (parsed === null) {
-        continue;
-      }
-      continue;
-    }
-
-    if (startsWithWord("import")) {
-      const afterKeyword = text[state.index + "import".length];
-
-      if (afterKeyword === ".") {
-        advance("import".length);
-        continue;
-      }
-
-      const keywordLoc = location();
-      advance("import".length);
-      skipWhitespaceAndComments();
-
-      if (currentChar() === "(") {
-        parseDynamicImportOrRequire("import");
-        continue;
-      }
-
-      parseImportStatement();
-      continue;
-    }
-
-    if (startsWithWord("export")) {
-      const keywordLoc = location();
-      advance("export".length);
-      parseExportStatement(keywordLoc);
-      continue;
-    }
-
-    if (startsWithWord("require")) {
-      advance("require".length);
-      parseDynamicImportOrRequire("require");
-      continue;
-    }
-
     if (isIdentifierStart(char)) {
-      while (state.index < text.length && isIdentifierChar(currentChar())) {
+      const keywordLoc = location();
+      const identifier = readIdentifier();
+
+      if (identifier === null) {
         advance();
+        continue;
       }
+
+      if (identifier === "import") {
+        if (currentChar() === ".") {
+          continue;
+        }
+
+        skipWhitespaceAndComments();
+
+        if (currentChar() === "(") {
+          parseDynamicImportOrRequire("import");
+          continue;
+        }
+
+        parseImportStatement();
+        continue;
+      }
+
+      if (identifier === "export") {
+        parseExportStatement(keywordLoc);
+        continue;
+      }
+
+      if (identifier === "require") {
+        parseDynamicImportOrRequire("require");
+        continue;
+      }
+
       continue;
     }
 

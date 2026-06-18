@@ -2,7 +2,13 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 
 import { normalizePath } from "../filesystem/path-utils.js";
 import { resolveSourceFileCandidate } from "./source-file-candidate.js";
-import type { ResolveContext, ResolveResult, Resolver } from "./resolve-import.js";
+import {
+  compileTsconfigPathsConfig,
+  type CompiledTsconfigPathsConfig,
+  type ResolveContext,
+  type ResolveResult,
+  type Resolver
+} from "./resolve-import.js";
 
 const isRelativeOrAbsolute = (specifier: string): boolean => {
   return specifier.startsWith("./") || specifier.startsWith("../") || specifier.startsWith("/");
@@ -25,22 +31,28 @@ const reportResolvedPath = (resolvedPath: string, baseUrl?: string): string => {
   return normalizedResolvedPath;
 };
 
+const getCompiledTsconfigPaths = (context: ResolveContext): CompiledTsconfigPathsConfig | undefined => {
+  return context.tsconfigPathsIndex ?? (context.tsconfigPaths === undefined ? undefined : compileTsconfigPathsConfig(context.tsconfigPaths));
+};
+
 const matchPattern = async (
   specifier: string,
   fromFile: string,
-  pattern: string,
-  replacements: ReadonlyArray<string>,
+  entry: {
+    pattern: string;
+    prefix: string;
+    suffix: string;
+    replacements: ReadonlyArray<string>;
+  },
   context: ResolveContext,
   baseUrl?: string
 ): Promise<string | undefined> => {
-  const starIndex = pattern.indexOf("*");
-
-  if (starIndex === -1) {
-    if (specifier !== pattern) {
+  if (entry.prefix === entry.pattern && entry.suffix === "") {
+    if (specifier !== entry.pattern) {
       return undefined;
     }
 
-    for (const replacement of replacements) {
+    for (const replacement of entry.replacements) {
       const root = baseUrl === undefined ? "." : baseUrl;
       const candidate = normalizePath(join(root, replacement));
       const resolved = await resolveCandidate(candidate, context);
@@ -52,16 +64,13 @@ const matchPattern = async (
     return undefined;
   }
 
-  const prefix = pattern.slice(0, starIndex);
-  const suffix = pattern.slice(starIndex + 1);
-
-  if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) {
+  if (!specifier.startsWith(entry.prefix) || !specifier.endsWith(entry.suffix)) {
     return undefined;
   }
 
-  const matched = specifier.slice(prefix.length, specifier.length - suffix.length);
+  const matched = specifier.slice(entry.prefix.length, specifier.length - entry.suffix.length);
 
-  for (const replacement of replacements) {
+  for (const replacement of entry.replacements) {
     const root = baseUrl === undefined ? dirname(normalizePath(fromFile)) : baseUrl;
     const candidate = normalizePath(join(root, replacement.replace("*", matched)));
     const resolved = await resolveCandidate(candidate, context);
@@ -76,20 +85,19 @@ const matchPattern = async (
 export const tsconfigPathsResolver: Resolver = {
   name: "tsconfig-paths",
   resolve: async (specifier: string, fromFile: string, context: ResolveContext): Promise<ResolveResult> => {
-    const paths = context.tsconfigPaths?.paths;
+    const compiled = getCompiledTsconfigPaths(context);
 
-    if (paths === undefined || isRelativeOrAbsolute(specifier)) {
+    if (compiled === undefined || isRelativeOrAbsolute(specifier)) {
       return { type: "unresolved", warning: "Not a tsconfig paths specifier" };
     }
 
-    for (const [pattern, replacements] of Object.entries(paths)) {
+    for (const entry of compiled.entries) {
       const resolved = await matchPattern(
         specifier,
         fromFile,
-        pattern,
-        replacements,
+        entry,
         context,
-        context.tsconfigPaths?.baseUrl
+        compiled.baseUrl
       );
 
       if (resolved !== undefined) {

@@ -346,4 +346,68 @@ describe("graph traversal", () => {
       ]
     });
   });
+
+  it("caches identical resolver work within one graph build", async () => {
+    const baseFs = createMemoryFileSystem({
+      "packages/shared/src/button.ts": "export const button = true;",
+      "src/app.ts": [
+        'import "@shared/button";',
+        'import "@shared/button";',
+        'export { button } from "@shared/button";'
+      ].join("\n"),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: {
+            "@shared/button": ["packages/shared/src/button.ts"]
+          }
+        }
+      })
+    });
+    let statCalls = 0;
+    const fs = {
+      ...baseFs,
+      stat: async (path: string) => {
+        statCalls += 1;
+        return baseFs.stat(path);
+      }
+    };
+
+    const graph = await buildGraph(
+      [
+        {
+          path: "packages/shared/src/button.ts",
+          scan: scanFileText({
+            filePath: "packages/shared/src/button.ts",
+            text: "export const button = true;"
+          })
+        },
+        {
+          path: "src/app.ts",
+          scan: scanFileText({
+            filePath: "src/app.ts",
+            text: [
+              'import "@shared/button";',
+              'import "@shared/button";',
+              'export { button } from "@shared/button";'
+            ].join("\n")
+          })
+        }
+      ],
+      {
+        resolveContext: {
+          fs,
+          tsconfigPaths: {
+            baseUrl: ".",
+            paths: {
+              "@shared/button": ["packages/shared/src/button.ts"]
+            }
+          }
+        }
+      }
+    );
+
+    expect(graph.edges).toHaveLength(3);
+    expect(statCalls).toBe(1);
+  });
 });

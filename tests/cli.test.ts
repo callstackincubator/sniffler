@@ -77,6 +77,28 @@ describe("CLI impact command", () => {
     expect(output.join("")).toContain("src/feature.ts");
   });
 
+  it("renders text output for legacy --changed files", async () => {
+    const fs = createFixtureFileSystem();
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--changed", "src/shared.ts"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("src/shared.ts");
+    expect(output.join("")).toContain("Recommended E2E tests:");
+  });
+
   it("renders JSON output for base/head mode", async () => {
     const fs = createFixtureFileSystem();
     const gitDiff = vi.fn(async () => ["src/shared.ts"]);
@@ -187,29 +209,6 @@ describe("CLI impact command", () => {
 
     expect(result.exitCode).toBe(1);
     expect(stderr.join("")).toContain("Use changed files or --base/--head, not both");
-    expect(stdout.join("")).toContain("sniffler impact");
-  });
-
-  it("rejects removed --changed", async () => {
-    const fs = createFixtureFileSystem();
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-
-    const result = await runCli(
-      ["impact", "--changed", "src/shared.ts"],
-      {
-        stdout: (chunk) => {
-          stdout.push(chunk);
-        },
-        stderr: (chunk) => {
-          stderr.push(chunk);
-        }
-      },
-      { fs, cwd: "." }
-    );
-
-    expect(result.exitCode).toBe(1);
-    expect(stderr.join("")).toContain("Unknown option");
     expect(stdout.join("")).toContain("sniffler impact");
   });
 
@@ -332,6 +331,27 @@ describe("CLI run command", () => {
     expect(output).toEqual([]);
   });
 
+  it("appends selected tests to the runner args for legacy --changed syntax", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runCli(
+      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).toHaveBeenCalledWith({
+      command: "pnpm",
+      args: ["vitest", "run", "e2e/feature.spec.ts"],
+      cwd: expect.any(String)
+    });
+  });
+
   it("returns the runner exit code", async () => {
     const fs = createFixtureFileSystem();
     const runner = vi.fn(async () => ({ exitCode: 7 }));
@@ -418,31 +438,6 @@ describe("CLI run command", () => {
     expect(result.exitCode).toBe(1);
     expect(runner).not.toHaveBeenCalled();
     expect(stderr.join("")).toContain("sniffler run requires a runner command after --");
-    expect(stdout.join("")).toContain("sniffler run");
-  });
-
-  it("rejects removed --changed", async () => {
-    const fs = createFixtureFileSystem();
-    const runner = vi.fn(async () => ({ exitCode: 0 }));
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-
-    const result = await runCli(
-      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
-      {
-        stdout: (chunk) => {
-          stdout.push(chunk);
-        },
-        stderr: (chunk) => {
-          stderr.push(chunk);
-        }
-      },
-      { fs, cwd: ".", runner }
-    );
-
-    expect(result.exitCode).toBe(1);
-    expect(runner).not.toHaveBeenCalled();
-    expect(stderr.join("")).toContain("Unknown option");
     expect(stdout.join("")).toContain("sniffler run");
   });
 });

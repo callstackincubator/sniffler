@@ -217,6 +217,168 @@ describe("scanFileText", () => {
     ]);
   });
 
+  it("handles tabs, CRLF line endings, and identifier boundaries", () => {
+    const result = scanFileText({
+      filePath: "src/whitespace.ts",
+      text: [
+        'import\tvalue\tfrom\t"./tabbed";\r\n',
+        'const imported = 1;\r\n',
+        'await import\t("./dynamic");\r\n',
+        'const requirement = 2;\r\n',
+        'export\t{ imported as renamed }\tfromage\t"./ignored";\r\n',
+        'export\t{ imported as renamed }\tfrom\t"./reexport";\r\n'
+      ].join("")
+    });
+
+    expect(result.imports).toEqual([
+      {
+        specifier: "./tabbed",
+        kind: "import",
+        loc: { line: 1, column: 19 },
+        entities: {
+          type: "named",
+          entities: [
+            {
+              imported: "default",
+              local: "value"
+            }
+          ]
+        }
+      },
+      {
+        specifier: "./dynamic",
+        kind: "dynamic-import",
+        loc: { line: 3, column: 15 },
+        entities: {
+          type: "all"
+        }
+      }
+    ]);
+
+    expect(result.exports).toEqual([
+      {
+        kind: "local",
+        exported: "renamed",
+        local: "imported",
+        loc: { line: 5, column: 1 }
+      },
+      {
+        kind: "re-export",
+        specifier: "./reexport",
+        imported: "imported",
+        exported: "renamed",
+        loc: { line: 6, column: 37 }
+      }
+    ]);
+
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("scans exported variable declarations with nested delimiters", () => {
+    const result = scanFileText({
+      filePath: "src/variables.ts",
+      text: [
+        "export const A = {",
+        "  nested: [1, 2, fn({ a: 1, b: [3, 4] })],",
+        "  value: callOne(callTwo({ x: 1 }))",
+        "}, B = makeThing(",
+        "  1,",
+        "  2,",
+        "  3",
+        ");",
+        "export const C = [",
+        "  { a: 1 },",
+        "  [2, 3]",
+        "];",
+        "export const D = transform(",
+        "  alpha,",
+        "  beta",
+        ")",
+        "export const E = \"done\";"
+      ].join("\n")
+    });
+
+    expect(result.imports).toEqual([]);
+    expect(result.exports).toEqual([
+      {
+        kind: "local",
+        exported: "A",
+        local: undefined,
+        loc: { line: 1, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "B",
+        local: undefined,
+        loc: { line: 1, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "C",
+        local: undefined,
+        loc: { line: 9, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "D",
+        local: undefined,
+        loc: { line: 13, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "E",
+        local: undefined,
+        loc: { line: 17, column: 1 }
+      }
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("does not match keywords inside longer identifiers or import.meta", () => {
+    const result = scanFileText({
+      filePath: "src/boundaries.ts",
+      text: [
+        "const important = 1;",
+        "const exportsValue = 2;",
+        "const required = 3;",
+        "const meta = import.meta;",
+        'import value from "./module-a";',
+        'export { value as renamed } from "./module-b";',
+        'const loaded = require("./module-c");'
+      ].join("\n")
+    });
+
+    expect(result.imports.map(({ specifier, kind }) => ({ specifier, kind }))).toEqual([
+      {
+        specifier: "./module-a",
+        kind: "import"
+      },
+      {
+        specifier: "./module-c",
+        kind: "require"
+      }
+    ]);
+
+    expect(result.exports).toHaveLength(1);
+
+    const [reExport] = result.exports;
+    expect(reExport?.kind).toBe("re-export");
+
+    if (reExport?.kind !== "re-export") {
+      return;
+    }
+
+    expect(reExport.specifier).toBe("./module-b");
+    expect(reExport.imported).toBe("value");
+    expect(reExport.exported).toBe("renamed");
+    expect(reExport.loc).toEqual({
+      line: 6,
+      column: 34
+    });
+
+    expect(result.warnings).toEqual([]);
+  });
+
   it("returns deterministic output for identical input", () => {
     const input = {
       filePath: "src/example.ts",

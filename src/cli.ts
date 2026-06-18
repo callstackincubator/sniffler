@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import cac from "cac";
-import { pathToFileURL } from "node:url";
 import packageJson from "../package.json" with { type: "json" };
+import { pathToFileURL } from "node:url";
 import type { ImpactCommandInput } from "./impact/impact-command.js";
 import { runImpactCommand } from "./impact/impact-command.js";
 import type { RunCommandDeps, RunCommandInput } from "./run/run-command.js";
@@ -40,8 +40,10 @@ const helpText = [
   "  sniffler run --help",
   "  sniffler impact --base <ref> --head <ref>",
   "  sniffler impact [<file> ...]",
+  "  sniffler impact --changed <file> [<file> ...]",
   "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
   "  sniffler run [<file> ...] -- <command> [args ...]",
+  "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
   "",
   "Commands:",
   "  impact    Analyze changed files and select impacted E2E tests",
@@ -54,6 +56,7 @@ const impactHelpText = [
   "Usage:",
   "  sniffler impact --base <ref> --head <ref>",
   "  sniffler impact [<file> ...]",
+  "  sniffler impact --changed <file> [<file> ...]",
   "",
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
@@ -68,25 +71,13 @@ const runHelpText = [
   "Usage:",
   "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
   "  sniffler run [<file> ...] -- <command> [args ...]",
+  "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
   "",
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
-
-const versionText = `${packageJson.version}\n`;
-
-const allowedImpactOptionKeys = new Set(["base", "head", "format", "config"]);
-const allowedRunOptionKeys = new Set(["base", "head", "config"]);
-
-type ParsedInput<T> =
-  | { type: "input"; input: T }
-  | { type: "error"; message: string };
-
-type ParsedSelectionOptions = Record<string, unknown> & {
-  "--"?: ReadonlyArray<string>;
-};
 
 export const renderHelp = () => {
   return `${helpText}\n`;
@@ -101,8 +92,19 @@ export const renderRunHelp = () => {
 };
 
 export const renderVersion = () => {
-  return versionText;
+  return `${packageJson.version}\n`;
 };
+
+type ParsedInput<T> =
+  | { type: "input"; input: T }
+  | { type: "error"; message: string };
+
+type ParsedSelectionOptions = Record<string, unknown> & {
+  "--"?: ReadonlyArray<string>;
+};
+
+const allowedImpactOptionKeys = new Set(["base", "head", "format", "config"]);
+const allowedRunOptionKeys = new Set(["base", "head", "config"]);
 
 const toFlagName = (key: string): string => {
   return `--${key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
@@ -145,6 +147,46 @@ const parseStringOption = (
   }
 
   return { value };
+};
+
+const normalizeLegacyChangedArgs = (
+  args: ReadonlyArray<string>
+): ParsedInput<ReadonlyArray<string>> => {
+  const separatorIndex = args.indexOf("--");
+  const selectionArgs = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
+  const trailingArgs = separatorIndex === -1 ? [] : args.slice(separatorIndex);
+  const normalizedSelectionArgs: string[] = [];
+
+  for (let index = 0; index < selectionArgs.length; index += 1) {
+    const argument = selectionArgs[index];
+
+    if (argument === "--changed") {
+      index += 1;
+
+      const changedFiles: string[] = [];
+
+      while (index < selectionArgs.length && !selectionArgs[index].startsWith("-")) {
+        changedFiles.push(selectionArgs[index]);
+        index += 1;
+      }
+
+      index -= 1;
+
+      if (changedFiles.length === 0) {
+        return { type: "error", message: "--changed requires at least one file path" };
+      }
+
+      normalizedSelectionArgs.push(...changedFiles);
+      continue;
+    }
+
+    normalizedSelectionArgs.push(argument);
+  }
+
+  return {
+    type: "input",
+    input: [...normalizedSelectionArgs, ...trailingArgs]
+  };
 };
 
 const buildImpactInput = (
@@ -327,9 +369,6 @@ export const runCli = async (
   deps: CliDeps = {}
 ): Promise<CliResult> => {
   const [command, ...rest] = argv;
-  const selectionArgs = command === "run" || command === "impact" ? rest : argv;
-  const separatorIndex = selectionArgs.indexOf("--");
-  const commandArgs = separatorIndex === -1 ? selectionArgs : selectionArgs.slice(0, separatorIndex);
 
   if (command === undefined || isHelpFlag(command)) {
     io.stdout(renderHelp());
@@ -341,24 +380,22 @@ export const runCli = async (
     return { exitCode: 0 };
   }
 
-  if (command === "impact" && commandArgs.some(isHelpFlag)) {
-    io.stdout(renderImpactHelp());
-    return { exitCode: 0 };
-  }
-
-  if (command === "run" && commandArgs.some(isHelpFlag)) {
-    io.stdout(renderRunHelp());
-    return { exitCode: 0 };
-  }
-
   if (command !== "impact" && command !== "run") {
     io.stderr(`Unknown command: ${command}\n`);
     io.stdout(renderHelp());
     return { exitCode: 1 };
   }
 
-  const cli = buildCli(io, deps, argv);
-  cli.parse(["node", "sniffler", ...argv], { run: false });
+  const normalizedArgs = normalizeLegacyChangedArgs(rest);
+
+  if (normalizedArgs.type === "error") {
+    io.stderr(`${normalizedArgs.message}\n`);
+    io.stdout(command === "impact" ? renderImpactHelp() : renderRunHelp());
+    return { exitCode: 1 };
+  }
+
+  const cli = buildCli(io, deps, normalizedArgs.input);
+  cli.parse(["node", "sniffler", command, ...normalizedArgs.input], { run: false });
 
   if (cli.matchedCommandName === undefined) {
     io.stderr(`Unknown command: ${command}\n`);

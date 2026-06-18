@@ -2,11 +2,17 @@ import type { ResolvedEdge } from "../cache/cache-types.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { normalizePath } from "../filesystem/path-utils.js";
 import { relativeResolver } from "../resolvers/relative-resolver.js";
-import { resolveImport, type ResolveContext } from "../resolvers/resolve-import.js";
+import {
+  compileTsconfigPathsConfig,
+  resolveImport,
+  type ResolveContext
+} from "../resolvers/resolve-import.js";
 import { tsconfigPathsResolver } from "../resolvers/tsconfig-paths-resolver.js";
 import { workspacePackageResolver } from "../resolvers/workspace-package-resolver.js";
 import { packageExportsResolver } from "../resolvers/package-exports-resolver.js";
+import { ALL_ENTITY_SELECTION } from "../scanner/scanner-types.js";
 import type { RawExport, ScanResult } from "../scanner/scanner-types.js";
+import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
 
 export type GraphNode = {
   path: string;
@@ -42,6 +48,23 @@ export const buildGraph = async (
     rename: async () => undefined
   };
   const resolveContext = input.resolveContext ?? { fs: fallbackFileSystem };
+  const resolutionCache = new Map<string, Awaited<ReturnType<typeof resolveImport>>>();
+  const workspacePackagesByName = new Map<string, WorkspacePackage>(
+    (resolveContext.workspacePackages ?? []).map((workspacePackage) => [
+      workspacePackage.name,
+      workspacePackage
+    ])
+  );
+  const tsconfigPathsIndex =
+    resolveContext.tsconfigPaths === undefined
+      ? undefined
+      : compileTsconfigPathsConfig(resolveContext.tsconfigPaths);
+  const baseResolveContext: ResolveContext = {
+    ...resolveContext,
+    workspacePackagesByName,
+    tsconfigPathsIndex,
+    resolutionCache
+  };
 
   const normalizedNodes = new Map<string, GraphNode>();
   const edges: ResolvedEdge[] = [];
@@ -60,7 +83,7 @@ export const buildGraph = async (
         dependency.specifier,
         node.path,
         {
-          ...resolveContext,
+          ...baseResolveContext,
           importKind: dependency.kind === "require" ? "require" : "import"
         },
         [
@@ -93,7 +116,7 @@ export const buildGraph = async (
         exported.specifier,
         node.path,
         {
-          ...resolveContext,
+          ...baseResolveContext,
           importKind: "import"
         },
         [
@@ -136,36 +159,45 @@ export const buildGraph = async (
         from: node.path,
         to: result.path,
         resolver: result.resolver,
-        entities: { type: "all" },
-        reExports: { type: "all" }
+        entities: ALL_ENTITY_SELECTION,
+        reExports: ALL_ENTITY_SELECTION
       });
     }
   }
 
-  return {
-    nodes: Array.from(normalizedNodes.values()).sort((left, right) => left.path.localeCompare(right.path)),
-    edges: edges.sort((left, right) => {
-      const fromComparison = left.from.localeCompare(right.from);
+  const sortedEdges = edges
+    .map((edge) => ({
+      edge,
+      entityKey: JSON.stringify(edge.entities),
+      reExportKey: JSON.stringify(edge.reExports)
+    }))
+    .sort((left, right) => {
+      const fromComparison = left.edge.from.localeCompare(right.edge.from);
       if (fromComparison !== 0) {
         return fromComparison;
       }
 
-      const toComparison = left.to.localeCompare(right.to);
+      const toComparison = left.edge.to.localeCompare(right.edge.to);
       if (toComparison !== 0) {
         return toComparison;
       }
 
-      const resolverComparison = left.resolver.localeCompare(right.resolver);
+      const resolverComparison = left.edge.resolver.localeCompare(right.edge.resolver);
       if (resolverComparison !== 0) {
         return resolverComparison;
       }
 
-      const entityComparison = JSON.stringify(left.entities).localeCompare(JSON.stringify(right.entities));
+      const entityComparison = left.entityKey.localeCompare(right.entityKey);
       if (entityComparison !== 0) {
         return entityComparison;
       }
 
-      return JSON.stringify(left.reExports).localeCompare(JSON.stringify(right.reExports));
+      return left.reExportKey.localeCompare(right.reExportKey);
     })
+    .map(({ edge }) => edge);
+
+  return {
+    nodes: Array.from(normalizedNodes.values()).sort((left, right) => left.path.localeCompare(right.path)),
+    edges: sortedEdges
   };
 };
