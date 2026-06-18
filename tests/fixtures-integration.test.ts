@@ -43,7 +43,7 @@ describe("fixture-backed CLI coverage", () => {
   it("renders text output and warnings from the single-package fixture", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "single-package",
-      argv: ["impact", "--changed", "src/shared.ts"]
+      argv: ["impact", "src/shared.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -89,7 +89,7 @@ describe("fixture-backed CLI coverage", () => {
   it("exits successfully when the single-package fixture has no mapped tests", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "single-package",
-      argv: ["impact", "--changed", "src/unrelated.ts"]
+      argv: ["impact", "src/unrelated.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -100,7 +100,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through package.json workspace discovery", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "package-json-workspaces",
-      argv: ["impact", "--changed", "packages/ui/src/button.ts"]
+      argv: ["impact", "packages/ui/src/button.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -111,7 +111,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through pnpm workspace discovery", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "pnpm-workspace",
-      argv: ["impact", "--changed", "packages/shared/src/button.ts"]
+      argv: ["impact", "packages/shared/src/button.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -122,7 +122,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through tsconfig paths", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "tsconfig-paths",
-      argv: ["impact", "--changed", "packages/shared/src/button.ts"]
+      argv: ["impact", "packages/shared/src/button.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -133,7 +133,7 @@ describe("fixture-backed CLI coverage", () => {
   it("selects tests through package exports", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "package-exports",
-      argv: ["impact", "--changed", "packages/ui/src/features/card.ts"]
+      argv: ["impact", "packages/ui/src/features/card.ts"]
     });
 
     expect(result.exitCode).toBe(0);
@@ -144,7 +144,7 @@ describe("fixture-backed CLI coverage", () => {
   it("narrows barrel impacts to matching entity consumers", async () => {
     const { result, output } = await runFixtureCli({
       fixture: "barrel-entities",
-      argv: ["impact", "--changed", "src/sourceB.ts", "--format", "json"]
+      argv: ["impact", "src/sourceB.ts", "--format", "json"]
     });
 
     expect(result.exitCode).toBe(0);

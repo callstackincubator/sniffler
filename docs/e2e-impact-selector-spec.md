@@ -60,11 +60,11 @@ Expected CLI commands:
 ```bash
 sniffler impact --base origin/main --head HEAD
 sniffler impact --base origin/main --head HEAD --format json
-sniffler impact --changed src/components/Button.tsx
-sniffler impact --changed src/components/Button.tsx --config .sniffler/config.json
+sniffler impact src/components/Button.tsx
+sniffler impact src/components/Button.tsx --config .sniffler/config.json
 ```
 
-`--base/--head` is the primary CI input. `--changed` exists for local debugging, non-Git callers, and focused tests.
+`--base/--head` is the primary CI input. Positional changed files exist for local debugging, non-Git callers, and focused tests.
 
 ## Project Structure
 
@@ -646,7 +646,7 @@ Never:
 ## Success Criteria
 
 - CLI can compute changed files from `--base/--head`.
-- CLI can accept explicit changed files via `--changed`.
+- CLI can accept explicit changed files as positional arguments.
 - Scanner extracts supported JS/TS import forms without AST.
 - Scanner returns warnings for non-literal dynamic imports and requires.
 - Resolver handles relative imports.

@@ -114,7 +114,7 @@ Verification completed:
 - [x] `pnpm lint`
 
 ### Task 11: Finish the CLI and output formats
-The `sniffler impact` command now runs end-to-end for `--base/--head` and `--changed`, and text/JSON output is rendered deterministically from the selected impact result.
+The `sniffler impact` command now runs end-to-end for `--base/--head` and positional changed files, and text/JSON output is rendered deterministically from the selected impact result.
 
 Verification completed:
 - [x] CLI tests pass for text output, JSON output, and the no-mapped-tests case

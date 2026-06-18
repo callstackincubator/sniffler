@@ -30,7 +30,6 @@ type DelimiterMode = "statement" | "call" | "variable";
 const isAsciiLetter = (code: number): boolean => {
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 };
-
 const isIdentifierStart = (char: string | undefined): boolean => {
   if (char === undefined) {
     return false;
@@ -112,7 +111,6 @@ const isTopLevelDelimiter = (mode: DelimiterMode, char: string | undefined): boo
       return char === "," || char === ";" || char === "\n";
   }
 };
-
 export const scanFileText = (input: ScanInput): ScanResult => {
   const text = input.text;
   const state: ScannerState = { index: 0, line: 1, column: 1 };
@@ -983,14 +981,6 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     }
 
     const char = currentChar();
-
-    if (char === "'" || char === '"' || char === "`") {
-      const parsed = consumeLiteral();
-      if (parsed === null) {
-        continue;
-      }
-      continue;
-    }
 
     if (isIdentifierStart(char)) {
       const keywordLoc = location();
