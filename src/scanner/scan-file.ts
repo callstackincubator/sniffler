@@ -24,6 +24,8 @@ type NamedBinding = {
   local?: string;
 };
 
+type DelimiterMode = "statement" | "call" | "variable";
+
 const isIdentifierStart = (char: string | undefined): boolean => {
   return char !== undefined && /[A-Za-z_$]/.test(char);
 };
@@ -46,6 +48,21 @@ const createNamedSelection = (entities: ReadonlyArray<NamedBinding>): EntitySele
     type: "named",
     entities
   };
+};
+
+const isTopLevelDelimiter = (mode: DelimiterMode, char: string | undefined): boolean => {
+  if (char === undefined) {
+    return false;
+  }
+
+  switch (mode) {
+    case "statement":
+      return char === ";" || char === "\n";
+    case "call":
+      return char === ")";
+    case "variable":
+      return char === "," || char === ";" || char === "\n";
+  }
 };
 
 export const scanFileText = (input: ScanInput): ScanResult => {
@@ -287,7 +304,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     return text.slice(start, state.index);
   };
 
-  const skipToTopLevelDelimiter = (delimiters: ReadonlySet<string>): void => {
+  const skipToTopLevelDelimiter = (mode: DelimiterMode): void => {
     let parenDepth = 0;
     let braceDepth = 0;
     let bracketDepth = 0;
@@ -332,8 +349,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
         parenDepth === 0 &&
         braceDepth === 0 &&
         bracketDepth === 0 &&
-        char !== undefined &&
-        delimiters.has(char)
+        isTopLevelDelimiter(mode, char)
       ) {
         return;
       }
@@ -385,7 +401,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
   };
 
   const finishStatement = (): void => {
-    skipToTopLevelDelimiter(new Set([";", "\n"]));
+    skipToTopLevelDelimiter("statement");
 
     if (currentChar() === ";" || currentChar() === "\n") {
       advance();
@@ -529,7 +545,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
     if (parsed === null) {
       emitWarning(kind, argumentLoc);
-      skipToTopLevelDelimiter(new Set([")"]));
+      skipToTopLevelDelimiter("call");
 
       if (currentChar() === ")") {
         advance();
@@ -545,7 +561,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       { type: "all" }
     );
 
-    skipToTopLevelDelimiter(new Set([")"]));
+    skipToTopLevelDelimiter("call");
 
     if (currentChar() === ")") {
       advance();
@@ -743,7 +759,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       if (name === null) {
         if (currentChar() === "=") {
           advance();
-          skipToTopLevelDelimiter(new Set([",", ";", "\n"]));
+          skipToTopLevelDelimiter("variable");
           continue;
         }
 
@@ -765,7 +781,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
       if (currentChar() === "=") {
         advance();
-        skipToTopLevelDelimiter(new Set([",", ";", "\n"]));
+        skipToTopLevelDelimiter("variable");
       }
 
       if (currentChar() === ",") {

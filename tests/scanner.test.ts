@@ -217,6 +217,66 @@ describe("scanFileText", () => {
     ]);
   });
 
+  it("scans exported variable declarations with nested delimiters", () => {
+    const result = scanFileText({
+      filePath: "src/variables.ts",
+      text: [
+        "export const A = {",
+        "  nested: [1, 2, fn({ a: 1, b: [3, 4] })],",
+        "  value: callOne(callTwo({ x: 1 }))",
+        "}, B = makeThing(",
+        "  1,",
+        "  2,",
+        "  3",
+        ");",
+        "export const C = [",
+        "  { a: 1 },",
+        "  [2, 3]",
+        "];",
+        "export const D = transform(",
+        "  alpha,",
+        "  beta",
+        ")",
+        "export const E = \"done\";"
+      ].join("\n")
+    });
+
+    expect(result.imports).toEqual([]);
+    expect(result.exports).toEqual([
+      {
+        kind: "local",
+        exported: "A",
+        local: undefined,
+        loc: { line: 1, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "B",
+        local: undefined,
+        loc: { line: 1, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "C",
+        local: undefined,
+        loc: { line: 9, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "D",
+        local: undefined,
+        loc: { line: 13, column: 1 }
+      },
+      {
+        kind: "local",
+        exported: "E",
+        local: undefined,
+        loc: { line: 17, column: 1 }
+      }
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it("does not match keywords inside longer identifiers or import.meta", () => {
     const result = scanFileText({
       filePath: "src/boundaries.ts",
