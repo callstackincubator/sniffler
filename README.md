@@ -46,6 +46,22 @@ Add Sniffler's project files to your repo:
 .sniffler/test-map.json
 ```
 
+Start with a focused config that points Sniffler at your source roots and test map:
+
+```json
+{
+  "source": {
+    "roots": ["apps", "packages"],
+    "ignore": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**"]
+  },
+  "tests": {
+    "manifest": ".sniffler/test-map.json"
+  }
+}
+```
+
+Sniffler fills in defaults for source extensions, workspace discovery, TSConfig paths, cache location, and output format. See [docs/config.md](docs/config.md) for the full configuration reference.
+
 Then run the CLI from the project root:
 
 ```bash
