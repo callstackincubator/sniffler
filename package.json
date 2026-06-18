@@ -13,6 +13,7 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
     "benchmark": "vitest bench --config vitest.config.ts tests/benchmark.bench.ts",
+    "benchmark:app": "node scripts/benchmark-expensify-app.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist coverage"
   },
