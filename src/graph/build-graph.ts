@@ -164,30 +164,39 @@ export const buildGraph = async (
     }
   }
 
-  return {
-    nodes: Array.from(normalizedNodes.values()).sort((left, right) => left.path.localeCompare(right.path)),
-    edges: edges.sort((left, right) => {
-      const fromComparison = left.from.localeCompare(right.from);
+  const sortedEdges = edges
+    .map((edge) => ({
+      edge,
+      entityKey: JSON.stringify(edge.entities),
+      reExportKey: JSON.stringify(edge.reExports)
+    }))
+    .sort((left, right) => {
+      const fromComparison = left.edge.from.localeCompare(right.edge.from);
       if (fromComparison !== 0) {
         return fromComparison;
       }
 
-      const toComparison = left.to.localeCompare(right.to);
+      const toComparison = left.edge.to.localeCompare(right.edge.to);
       if (toComparison !== 0) {
         return toComparison;
       }
 
-      const resolverComparison = left.resolver.localeCompare(right.resolver);
+      const resolverComparison = left.edge.resolver.localeCompare(right.edge.resolver);
       if (resolverComparison !== 0) {
         return resolverComparison;
       }
 
-      const entityComparison = JSON.stringify(left.entities).localeCompare(JSON.stringify(right.entities));
+      const entityComparison = left.entityKey.localeCompare(right.entityKey);
       if (entityComparison !== 0) {
         return entityComparison;
       }
 
-      return JSON.stringify(left.reExports).localeCompare(JSON.stringify(right.reExports));
+      return left.reExportKey.localeCompare(right.reExportKey);
     })
+    .map(({ edge }) => edge);
+
+  return {
+    nodes: Array.from(normalizedNodes.values()).sort((left, right) => left.path.localeCompare(right.path)),
+    edges: sortedEdges
   };
 };
