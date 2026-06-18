@@ -1,4 +1,8 @@
+<div align="center">
+
 # Sniffler
+
+<img width="256" height="256" alt="" src="https://github.com/user-attachments/assets/7bc6f920-c94a-4412-955f-85a78da9244a" />
 
 ### Sniffler sniffs out the E2E tests your changes actually wake up.
 
@@ -6,6 +10,8 @@
 [![npm downloads][npm-downloads-badge]][npm-downloads]
 [![Chat][chat-badge]][chat]
 [![PRs Welcome][prs-welcome-badge]][prs-welcome]
+
+</div>
 
 Sniffler turns changed source files into the E2E tests they can affect so you can run a smaller, more relevant set in CI or locally without tracing the whole graph by hand.
 
@@ -86,3 +92,7 @@ Like the project? ⚛️ [Join the team](https://callstack.com/careers/?utm_camp
 [license]: https://github.com/callstackincubator/sniffler/blob/main/LICENSE
 [npm-downloads-badge]: https://img.shields.io/npm/dm/sniffler?style=for-the-badge
 [npm-downloads]: https://www.npmjs.com/package/sniffler
+[prs-welcome-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge
+[prs-welcome]: https://github.com/callstackincubator/sniffler/pulls
+[chat-badge]: https://img.shields.io/discord/426714625279524876.svg?style=for-the-badge
+[chat]: https://discord.gg/xgGt7KAjxv
