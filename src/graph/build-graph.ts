@@ -2,11 +2,16 @@ import type { ResolvedEdge } from "../cache/cache-types.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { normalizePath } from "../filesystem/path-utils.js";
 import { relativeResolver } from "../resolvers/relative-resolver.js";
-import { resolveImport, type ResolveContext } from "../resolvers/resolve-import.js";
+import {
+  compileTsconfigPathsConfig,
+  resolveImport,
+  type ResolveContext
+} from "../resolvers/resolve-import.js";
 import { tsconfigPathsResolver } from "../resolvers/tsconfig-paths-resolver.js";
 import { workspacePackageResolver } from "../resolvers/workspace-package-resolver.js";
 import { packageExportsResolver } from "../resolvers/package-exports-resolver.js";
 import type { RawExport, ScanResult } from "../scanner/scanner-types.js";
+import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
 
 export type GraphNode = {
   path: string;
@@ -42,6 +47,23 @@ export const buildGraph = async (
     rename: async () => undefined
   };
   const resolveContext = input.resolveContext ?? { fs: fallbackFileSystem };
+  const resolutionCache = new Map<string, Awaited<ReturnType<typeof resolveImport>>>();
+  const workspacePackagesByName = new Map<string, WorkspacePackage>(
+    (resolveContext.workspacePackages ?? []).map((workspacePackage) => [
+      workspacePackage.name,
+      workspacePackage
+    ])
+  );
+  const tsconfigPathsIndex =
+    resolveContext.tsconfigPaths === undefined
+      ? undefined
+      : compileTsconfigPathsConfig(resolveContext.tsconfigPaths);
+  const baseResolveContext: ResolveContext = {
+    ...resolveContext,
+    workspacePackagesByName,
+    tsconfigPathsIndex,
+    resolutionCache
+  };
 
   const normalizedNodes = new Map<string, GraphNode>();
   const edges: ResolvedEdge[] = [];
@@ -60,7 +82,7 @@ export const buildGraph = async (
         dependency.specifier,
         node.path,
         {
-          ...resolveContext,
+          ...baseResolveContext,
           importKind: dependency.kind === "require" ? "require" : "import"
         },
         [
@@ -93,7 +115,7 @@ export const buildGraph = async (
         exported.specifier,
         node.path,
         {
-          ...resolveContext,
+          ...baseResolveContext,
           importKind: "import"
         },
         [

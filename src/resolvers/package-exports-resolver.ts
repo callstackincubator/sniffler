@@ -131,9 +131,9 @@ export const packageExportsResolver: Resolver = {
       return { type: "external" };
     }
 
-    const workspacePackage = (context.workspacePackages ?? []).find(
-      (entry) => entry.name === parsedSpecifier.packageName
-    );
+    const workspacePackage =
+      context.workspacePackagesByName?.get(parsedSpecifier.packageName) ??
+      (context.workspacePackages ?? []).find((entry) => entry.name === parsedSpecifier.packageName);
 
     if (workspacePackage === undefined) {
       return { type: "external" };
