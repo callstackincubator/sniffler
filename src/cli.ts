@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+import cac from "cac";
 import { pathToFileURL } from "node:url";
+import packageJson from "../package.json" with { type: "json" };
 import type { ImpactCommandInput } from "./impact/impact-command.js";
 import { runImpactCommand } from "./impact/impact-command.js";
 import type { RunCommandDeps, RunCommandInput } from "./run/run-command.js";
@@ -33,12 +35,13 @@ const helpText = [
   "",
   "Usage:",
   "  sniffler --help",
+  "  sniffler --version",
   "  sniffler impact --help",
   "  sniffler run --help",
   "  sniffler impact --base <ref> --head <ref>",
-  "  sniffler impact --changed <file> [<file> ...]",
+  "  sniffler impact [<file> ...]",
   "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
-  "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
+  "  sniffler run [<file> ...] -- <command> [args ...]",
   "",
   "Commands:",
   "  impact    Analyze changed files and select impacted E2E tests",
@@ -50,12 +53,11 @@ const impactHelpText = [
   "",
   "Usage:",
   "  sniffler impact --base <ref> --head <ref>",
-  "  sniffler impact --changed <file> [<file> ...]",
+  "  sniffler impact [<file> ...]",
   "",
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
-  "  --changed <file>  Explicit changed file path (repeatable)",
   "  --format <text|json>  Override the configured output format",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
@@ -65,14 +67,26 @@ const runHelpText = [
   "",
   "Usage:",
   "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
-  "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
+  "  sniffler run [<file> ...] -- <command> [args ...]",
   "",
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
-  "  --changed <file>  Explicit changed file path (repeatable)",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
+
+const versionText = `${packageJson.version}\n`;
+
+const allowedImpactOptionKeys = new Set(["base", "head", "format", "config"]);
+const allowedRunOptionKeys = new Set(["base", "head", "config"]);
+
+type ParsedInput<T> =
+  | { type: "input"; input: T }
+  | { type: "error"; message: string };
+
+type ParsedSelectionOptions = Record<string, unknown> & {
+  "--"?: ReadonlyArray<string>;
+};
 
 export const renderHelp = () => {
   return `${helpText}\n`;
@@ -86,151 +100,225 @@ export const renderRunHelp = () => {
   return `${runHelpText}\n`;
 };
 
-type ParsedSelectionArgs =
-  | { type: "help" }
-  | { type: "error"; message: string }
-  | { type: "input"; input: ImpactCommandInput };
+export const renderVersion = () => {
+  return versionText;
+};
 
-const parseSelectionArgs = (
-  args: ReadonlyArray<string>,
-  allowFormat = true
-): ParsedSelectionArgs => {
-  const input: ImpactCommandInput = {};
-  const changedFiles: string[] = [];
+const toFlagName = (key: string): string => {
+  return `--${key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
+};
 
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-
-    if (argument === "--help" || argument === "-h") {
-      return { type: "help" };
-    }
-
-    if (argument === "--base") {
-      const value = args[index + 1];
-      if (value === undefined || value.startsWith("-")) {
-        return { type: "error", message: "--base requires a value" };
-      }
-
-      input.base = value;
-      index += 1;
+const findUnknownOption = (options: ParsedSelectionOptions, allowedKeys: ReadonlySet<string>): string | undefined => {
+  for (const key of Object.keys(options)) {
+    if (key === "--") {
       continue;
     }
 
-    if (argument === "--head") {
-      const value = args[index + 1];
-      if (value === undefined || value.startsWith("-")) {
-        return { type: "error", message: "--head requires a value" };
-      }
-
-      input.head = value;
-      index += 1;
-      continue;
+    if (!allowedKeys.has(key)) {
+      return toFlagName(key);
     }
-
-    if (argument === "--changed") {
-      index += 1;
-
-      while (index < args.length && !args[index].startsWith("-")) {
-        changedFiles.push(args[index]);
-        index += 1;
-      }
-
-      index -= 1;
-
-      if (changedFiles.length === 0) {
-        return { type: "error", message: "--changed requires at least one file path" };
-      }
-
-      continue;
-    }
-
-    if (argument === "--config") {
-      const value = args[index + 1];
-      if (value === undefined || value.startsWith("-")) {
-        return { type: "error", message: "--config requires a value" };
-      }
-
-      input.configPath = value;
-      index += 1;
-      continue;
-    }
-
-    if (argument === "--format") {
-      if (!allowFormat) {
-        return { type: "error", message: `Unknown option: ${argument}` };
-      }
-
-      const value = args[index + 1];
-      if (value === undefined || value.startsWith("-")) {
-        return { type: "error", message: "--format requires a value" };
-      }
-
-      if (value !== "text" && value !== "json") {
-        return { type: "error", message: "--format must be either text or json" };
-      }
-
-      input.format = value;
-      index += 1;
-      continue;
-    }
-
-    if (argument.startsWith("-")) {
-      return { type: "error", message: `Unknown option: ${argument}` };
-    }
-
-    return { type: "error", message: `Unexpected argument: ${argument}` };
   }
 
-  if (changedFiles.length > 0) {
-    input.changedFiles = changedFiles;
+  return undefined;
+};
+
+const isHelpFlag = (value: string): boolean => {
+  return value === "--help" || value === "-h";
+};
+
+const isVersionFlag = (value: string): boolean => {
+  return value === "--version" || value === "-v";
+};
+
+const parseStringOption = (
+  options: ParsedSelectionOptions,
+  key: string
+): { value?: string; error?: string } => {
+  const value = options[key];
+
+  if (value === undefined) {
+    return {};
+  }
+
+  if (typeof value !== "string") {
+    return { error: `--${key} requires a value` };
+  }
+
+  return { value };
+};
+
+const buildImpactInput = (
+  files: ReadonlyArray<string>,
+  options: ParsedSelectionOptions
+): ParsedInput<ImpactCommandInput> => {
+  const unknownOption = findUnknownOption(options, allowedImpactOptionKeys);
+
+  if (unknownOption !== undefined) {
+    return { type: "error", message: `Unknown option: ${unknownOption}` };
+  }
+
+  const base = parseStringOption(options, "base");
+
+  if (base.error !== undefined) {
+    return { type: "error", message: base.error };
+  }
+
+  const head = parseStringOption(options, "head");
+
+  if (head.error !== undefined) {
+    return { type: "error", message: head.error };
+  }
+
+  const configPath = parseStringOption(options, "config");
+
+  if (configPath.error !== undefined) {
+    return { type: "error", message: configPath.error };
+  }
+
+  const format = parseStringOption(options, "format");
+
+  if (format.error !== undefined) {
+    return { type: "error", message: format.error };
+  }
+
+  if (format.value !== undefined && format.value !== "text" && format.value !== "json") {
+    return { type: "error", message: "--format must be either text or json" };
+  }
+
+  const hasFiles = files.length > 0;
+  const hasBase = base.value !== undefined;
+  const hasHead = head.value !== undefined;
+
+  if (hasFiles && (hasBase || hasHead)) {
+    return { type: "error", message: "Use changed files or --base/--head, not both" };
+  }
+
+  if (!hasFiles && hasBase !== hasHead) {
+    return { type: "error", message: "--base and --head must be provided together" };
+  }
+
+  if (!hasFiles && !hasBase && !hasHead) {
+    return { type: "error", message: "Provide changed files or both --base and --head" };
+  }
+
+  const input: ImpactCommandInput = {};
+
+  if (hasFiles) {
+    input.changedFiles = files;
+  } else {
+    input.base = base.value;
+    input.head = head.value;
+  }
+
+  if (configPath.value !== undefined) {
+    input.configPath = configPath.value;
+  }
+
+  if (format.value !== undefined) {
+    input.format = format.value;
   }
 
   return { type: "input", input };
 };
 
-type ParsedRunArgs =
-  | { type: "help" }
-  | { type: "error"; message: string }
-  | { type: "input"; input: RunCommandInput };
+const buildRunInput = (
+  files: ReadonlyArray<string>,
+  options: ParsedSelectionOptions,
+  rawArgs: ReadonlyArray<string>
+): ParsedInput<RunCommandInput> => {
+  const unknownOption = findUnknownOption(options, allowedRunOptionKeys);
 
-const parseRunArgs = (args: ReadonlyArray<string>): ParsedRunArgs => {
-  const separatorIndex = args.indexOf("--");
+  if (unknownOption !== undefined) {
+    return { type: "error", message: `Unknown option: ${unknownOption}` };
+  }
+
+  const separatorIndex = rawArgs.indexOf("--");
 
   if (separatorIndex === -1) {
-    if (args.includes("--help") || args.includes("-h")) {
-      return { type: "help" };
-    }
-
     return { type: "error", message: "sniffler run requires a runner command after --" };
   }
 
-  const selectionArgs = args.slice(0, separatorIndex);
-  const runnerArgs = args.slice(separatorIndex + 1);
+  const runnerArgs = rawArgs.slice(separatorIndex + 1);
 
   if (runnerArgs.length === 0) {
     return { type: "error", message: "sniffler run requires a runner command after --" };
   }
 
-  const parsedSelectionArgs = parseSelectionArgs(selectionArgs, false);
+  const selection = buildImpactInput(files, options);
 
-  if (parsedSelectionArgs.type !== "input") {
-    return parsedSelectionArgs;
+  if (selection.type === "error") {
+    return selection;
   }
 
-  const [command, ...rest] = runnerArgs;
-
-  if (command === undefined) {
-    return { type: "error", message: "sniffler run requires a runner command after --" };
-  }
+  const [command, ...args] = runnerArgs;
 
   return {
     type: "input",
     input: {
-      ...parsedSelectionArgs.input,
+      ...selection.input,
       command,
-      args: rest
+      args
     }
   };
+};
+
+const emitValidationError = (io: CliIO, message: string, helpText: string): CliResult => {
+  io.stderr(`${message}\n`);
+  io.stdout(helpText);
+  return { exitCode: 1 };
+};
+
+const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
+  const cli = cac("sniffler");
+
+  cli
+    .command("impact [...files]", "Analyze changed files and select impacted E2E tests")
+    .option("--base <ref>", "Git base ref for changed-file discovery")
+    .option("--head <ref>", "Git head ref for changed-file discovery")
+    .option("--format <format>", "Override configured output format")
+    .option("--config <path>", "Path to .sniffler/config.json")
+    .action(async (files: ReadonlyArray<string> = [], options: ParsedSelectionOptions) => {
+      const parsed = buildImpactInput(files, options);
+
+      if (parsed.type === "error") {
+        return emitValidationError(io, parsed.message, renderImpactHelp());
+      }
+
+      try {
+        const result = await runImpactCommand(parsed.input, deps);
+        io.stdout(result.output);
+        return { exitCode: result.exitCode };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        io.stderr(`${message}\n`);
+        return { exitCode: 1 };
+      }
+    });
+
+  cli
+    .command("run [...files]", "Select impacted E2E tests and execute a command")
+    .option("--base <ref>", "Git base ref for changed-file discovery")
+    .option("--head <ref>", "Git head ref for changed-file discovery")
+    .option("--config <path>", "Path to .sniffler/config.json")
+    .allowUnknownOptions()
+    .action(async (files: ReadonlyArray<string> = [], options: ParsedSelectionOptions) => {
+      const parsed = buildRunInput(files, options, rawArgs);
+
+      if (parsed.type === "error") {
+        return emitValidationError(io, parsed.message, renderRunHelp());
+      }
+
+      try {
+        const result = await runRunCommand(parsed.input, deps);
+        return { exitCode: result.exitCode };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        io.stderr(`${message}\n`);
+        return { exitCode: 1 };
+      }
+    });
+
+  return cli;
 };
 
 export const runCli = async (
@@ -239,64 +327,60 @@ export const runCli = async (
   deps: CliDeps = {}
 ): Promise<CliResult> => {
   const [command, ...rest] = argv;
+  const selectionArgs = command === "run" || command === "impact" ? rest : argv;
+  const separatorIndex = selectionArgs.indexOf("--");
+  const commandArgs = separatorIndex === -1 ? selectionArgs : selectionArgs.slice(0, separatorIndex);
 
-  if (command === undefined || command === "--help" || command === "-h") {
+  if (command === undefined || isHelpFlag(command)) {
     io.stdout(renderHelp());
     return { exitCode: 0 };
   }
 
-  if (command === "impact") {
-    const parsed = parseSelectionArgs(rest);
-
-    if (parsed.type === "help") {
-      io.stdout(renderImpactHelp());
-      return { exitCode: 0 };
-    }
-
-    if (parsed.type === "error") {
-      io.stderr(`${parsed.message}\n`);
-      io.stdout(renderImpactHelp());
-      return { exitCode: 1 };
-    }
-
-    try {
-      const result = await runImpactCommand(parsed.input, deps);
-      io.stdout(result.output);
-      return { exitCode: result.exitCode };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      io.stderr(`${message}\n`);
-      return { exitCode: 1 };
-    }
+  if (isVersionFlag(command)) {
+    io.stdout(renderVersion());
+    return { exitCode: 0 };
   }
 
-  if (command === "run") {
-    const parsed = parseRunArgs(rest);
-
-    if (parsed.type === "help") {
-      io.stdout(renderRunHelp());
-      return { exitCode: 0 };
-    }
-
-    if (parsed.type === "error") {
-      io.stderr(`${parsed.message}\n`);
-      io.stdout(renderRunHelp());
-      return { exitCode: 1 };
-    }
-
-    try {
-      const result = await runRunCommand(parsed.input, deps);
-      return { exitCode: result.exitCode };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      io.stderr(`${message}\n`);
-      return { exitCode: 1 };
-    }
+  if (command === "impact" && commandArgs.some(isHelpFlag)) {
+    io.stdout(renderImpactHelp());
+    return { exitCode: 0 };
   }
 
-  io.stderr(`Unknown command: ${command}\n`);
-  io.stdout(renderHelp());
-  return { exitCode: 1 };
+  if (command === "run" && commandArgs.some(isHelpFlag)) {
+    io.stdout(renderRunHelp());
+    return { exitCode: 0 };
+  }
+
+  if (command !== "impact" && command !== "run") {
+    io.stderr(`Unknown command: ${command}\n`);
+    io.stdout(renderHelp());
+    return { exitCode: 1 };
+  }
+
+  const cli = buildCli(io, deps, argv);
+  cli.parse(["node", "sniffler", ...argv], { run: false });
+
+  if (cli.matchedCommandName === undefined) {
+    io.stderr(`Unknown command: ${command}\n`);
+    io.stdout(renderHelp());
+    return { exitCode: 1 };
+  }
+
+  try {
+    const result = await cli.runMatchedCommand();
+    return result ?? { exitCode: 0 };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    io.stderr(`${message}\n`);
+    if (command === "impact") {
+      io.stdout(renderImpactHelp());
+    } else if (command === "run") {
+      io.stdout(renderRunHelp());
+    } else {
+      io.stdout(renderHelp());
+    }
+    return { exitCode: 1 };
+  }
 };
 
 const isMainModule = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;

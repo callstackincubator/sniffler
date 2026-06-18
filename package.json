@@ -21,5 +21,8 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "cac": "^7.0.0"
   }
 }

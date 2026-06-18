@@ -30,12 +30,12 @@ const createFixtureFileSystem = (testMapTargets: ReadonlyArray<string> = ["src/f
 };
 
 describe("CLI impact command", () => {
-  it("renders text output for changed files", async () => {
+  it("renders text output for positional changed files", async () => {
     const fs = createFixtureFileSystem();
     const output: string[] = [];
 
     const result = await runCli(
-      ["impact", "--changed", "src/shared.ts"],
+      ["impact", "src/shared.ts"],
       {
         stdout: (chunk) => {
           output.push(chunk);
@@ -53,6 +53,28 @@ describe("CLI impact command", () => {
     expect(output.join("")).toContain("Recommended E2E tests:");
     expect(output.join("")).toContain("e2e/feature.spec.ts");
     expect(output.join("")).toContain("path: src/shared.ts -> src/feature.ts");
+  });
+
+  it("renders text output for multiple positional changed files", async () => {
+    const fs = createFixtureFileSystem(["src/shared.ts", "src/feature.ts"]);
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "src/shared.ts", "src/feature.ts"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("src/shared.ts");
+    expect(output.join("")).toContain("src/feature.ts");
   });
 
   it("renders JSON output for base/head mode", async () => {
@@ -99,12 +121,127 @@ describe("CLI impact command", () => {
     });
   });
 
+  it("rejects no selection", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("Provide changed files or both --base and --head");
+    expect(stdout.join("")).toContain("sniffler impact");
+  });
+
+  it("rejects partial git refs", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--base", "origin/main"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("--base and --head must be provided together");
+    expect(stdout.join("")).toContain("sniffler impact");
+  });
+
+  it("rejects mixed selection", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "src/shared.ts", "--base", "origin/main", "--head", "HEAD"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("Use changed files or --base/--head, not both");
+    expect(stdout.join("")).toContain("sniffler impact");
+  });
+
+  it("rejects removed --changed", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--changed", "src/shared.ts"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("Unknown option");
+    expect(stdout.join("")).toContain("sniffler impact");
+  });
+
+  it("validates --format", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "src/shared.ts", "--format", "xml"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("--format must be either text or json");
+    expect(stdout.join("")).toContain("sniffler impact");
+  });
+
   it("exits successfully when no tests are mapped", async () => {
     const fs = createFixtureFileSystem(["src/unrelated.ts"]);
     const output: string[] = [];
 
     const result = await runCli(
-      ["impact", "--changed", "src/shared.ts"],
+      ["impact", "src/shared.ts"],
       {
         stdout: (chunk) => {
           output.push(chunk);
@@ -141,7 +278,7 @@ describe("CLI run command", () => {
     const output: string[] = [];
 
     const result = await runCli(
-      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      ["run", "src/shared.ts", "--", "pnpm", "vitest", "run"],
       {
         stdout: (chunk) => {
           output.push(chunk);
@@ -167,7 +304,7 @@ describe("CLI run command", () => {
     const runner = vi.fn(async () => ({ exitCode: 7 }));
 
     const result = await runCli(
-      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      ["run", "src/shared.ts", "--", "pnpm", "vitest", "run"],
       {
         stdout: () => {},
         stderr: () => {}
@@ -184,7 +321,7 @@ describe("CLI run command", () => {
     const output: string[] = [];
 
     const result = await runCli(
-      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      ["run", "src/shared.ts", "--", "pnpm", "vitest", "run"],
       {
         stdout: (chunk) => {
           output.push(chunk);
@@ -201,7 +338,7 @@ describe("CLI run command", () => {
     expect(output).toEqual([]);
   });
 
-  it("errors without the -- separator", async () => {
+  it("rejects missing --", async () => {
     const fs = createFixtureFileSystem();
     const runner = vi.fn(async () => ({ exitCode: 0 }));
     const stdout: string[] = [];
@@ -226,7 +363,7 @@ describe("CLI run command", () => {
     expect(stdout.join("")).toContain("sniffler run");
   });
 
-  it("errors when -- has no command", async () => {
+  it("rejects empty runner", async () => {
     const fs = createFixtureFileSystem();
     const runner = vi.fn(async () => ({ exitCode: 0 }));
     const stdout: string[] = [];
@@ -249,5 +386,78 @@ describe("CLI run command", () => {
     expect(runner).not.toHaveBeenCalled();
     expect(stderr.join("")).toContain("sniffler run requires a runner command after --");
     expect(stdout.join("")).toContain("sniffler run");
+  });
+
+  it("rejects removed --changed", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["run", "--changed", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(runner).not.toHaveBeenCalled();
+    expect(stderr.join("")).toContain("Unknown option");
+    expect(stdout.join("")).toContain("sniffler run");
+  });
+});
+
+describe("CLI help", () => {
+  it("routes help through injected stdout", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["--help"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.join("")).toContain("sniffler");
+    expect(stderr).toEqual([]);
+  });
+
+  it("routes version through injected stdout", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["--version"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.join("")).toContain("0.0.0");
+    expect(stderr).toEqual([]);
   });
 });
