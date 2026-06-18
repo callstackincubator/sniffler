@@ -17,6 +17,8 @@ export type EntitySelection =
       }>;
     };
 
+export const ALL_ENTITY_SELECTION = { type: "all" } as const;
+
 export type RawImportKind = "import" | "export" | "require" | "dynamic-import";
 
 export type RawImport = {

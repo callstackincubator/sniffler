@@ -1,3 +1,4 @@
+import { ALL_ENTITY_SELECTION } from "./scanner-types.js";
 import type {
   EntitySelection,
   RawExport,
@@ -558,7 +559,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       parsed.specifier,
       kind === "import" ? "dynamic-import" : "require",
       parsed.loc,
-      { type: "all" }
+      ALL_ENTITY_SELECTION
     );
 
     skipToTopLevelDelimiter("call");
@@ -574,7 +575,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     if (currentChar() === "'" || currentChar() === '"' || currentChar() === "`") {
       const parsed = consumeLiteral();
       if (parsed !== null) {
-        emitImport(parsed.specifier, "import", parsed.loc, { type: "all" });
+        emitImport(parsed.specifier, "import", parsed.loc, ALL_ENTITY_SELECTION);
       }
       finishStatement();
       return;
@@ -610,7 +611,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       const parsed = consumeLiteral();
 
       if (parsed !== null) {
-        emitImport(parsed.specifier, "import", parsed.loc, { type: "all" });
+        emitImport(parsed.specifier, "import", parsed.loc, ALL_ENTITY_SELECTION);
       }
 
       finishStatement();

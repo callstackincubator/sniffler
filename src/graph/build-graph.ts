@@ -10,6 +10,7 @@ import {
 import { tsconfigPathsResolver } from "../resolvers/tsconfig-paths-resolver.js";
 import { workspacePackageResolver } from "../resolvers/workspace-package-resolver.js";
 import { packageExportsResolver } from "../resolvers/package-exports-resolver.js";
+import { ALL_ENTITY_SELECTION } from "../scanner/scanner-types.js";
 import type { RawExport, ScanResult } from "../scanner/scanner-types.js";
 import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
 
@@ -158,8 +159,8 @@ export const buildGraph = async (
         from: node.path,
         to: result.path,
         resolver: result.resolver,
-        entities: { type: "all" },
-        reExports: { type: "all" }
+        entities: ALL_ENTITY_SELECTION,
+        reExports: ALL_ENTITY_SELECTION
       });
     }
   }

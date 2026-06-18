@@ -1,6 +1,7 @@
 import { normalizePath } from "../filesystem/path-utils.js";
 import type { DependencyGraph } from "./build-graph.js";
 import type { ResolvedEdge } from "../cache/cache-types.js";
+import { ALL_ENTITY_SELECTION } from "../scanner/scanner-types.js";
 import type { EntitySelection } from "../scanner/scanner-types.js";
 
 export type ImpactPath = {
@@ -34,7 +35,7 @@ type ReverseEdge = {
 };
 
 const createAllSelection = (): EntitySet => {
-  return { type: "all" };
+  return ALL_ENTITY_SELECTION;
 };
 
 const createNamedSelection = (entities: Iterable<string>): EntitySet => {
