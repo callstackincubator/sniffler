@@ -928,44 +928,41 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       continue;
     }
 
-    if (startsWithWord("import")) {
-      const afterKeyword = text[state.index + "import".length];
-
-      if (afterKeyword === ".") {
-        advance("import".length);
-        continue;
-      }
-
-      const keywordLoc = location();
-      advance("import".length);
-      skipWhitespaceAndComments();
-
-      if (currentChar() === "(") {
-        parseDynamicImportOrRequire("import");
-        continue;
-      }
-
-      parseImportStatement();
-      continue;
-    }
-
-    if (startsWithWord("export")) {
-      const keywordLoc = location();
-      advance("export".length);
-      parseExportStatement(keywordLoc);
-      continue;
-    }
-
-    if (startsWithWord("require")) {
-      advance("require".length);
-      parseDynamicImportOrRequire("require");
-      continue;
-    }
-
     if (isIdentifierStart(char)) {
-      while (state.index < text.length && isIdentifierChar(currentChar())) {
+      const keywordLoc = location();
+      const identifier = readIdentifier();
+
+      if (identifier === null) {
         advance();
+        continue;
       }
+
+      if (identifier === "import") {
+        if (currentChar() === ".") {
+          continue;
+        }
+
+        skipWhitespaceAndComments();
+
+        if (currentChar() === "(") {
+          parseDynamicImportOrRequire("import");
+          continue;
+        }
+
+        parseImportStatement();
+        continue;
+      }
+
+      if (identifier === "export") {
+        parseExportStatement(keywordLoc);
+        continue;
+      }
+
+      if (identifier === "require") {
+        parseDynamicImportOrRequire("require");
+        continue;
+      }
+
       continue;
     }
 
