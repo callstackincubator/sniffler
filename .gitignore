@@ -148,3 +148,4 @@ vite.config.ts.timestamp-*
 
 # Sniffler
 .sniffler/cache.json
+.benchmark-repos/

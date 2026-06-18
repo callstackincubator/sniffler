@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
+const expensifyAppRepo = "https://github.com/Expensify/App.git";
+const managedClonePath = resolve(repoRoot, ".benchmark-repos/expensify-app");
 
 const parseArgs = (argv) => {
   const options = {
-    app: resolve(repoRoot, "../App"),
+    app: undefined,
     iterations: 5,
     warmup: 1,
     build: true,
@@ -94,11 +96,15 @@ const printHelp = () => {
       "Runs Sniffler's built CLI against an Expensify App checkout.",
       "",
       "Options:",
-      "  --app <path>                  App checkout path (default: ../App)",
+      "  --app <path>                  App checkout path; skips discovery and cloning",
       "  --iterations <count>          Measured runs per scenario (default: 5)",
       "  --warmup <count>              Warmup runs per scenario (default: 1)",
       "  --scenario <name=file[,file]> Add or replace benchmark scenario; repeatable",
       "  --no-build                    Use existing dist/cli.js instead of running pnpm build",
+      "",
+      "App discovery:",
+      "  Uses SNIFFLER_EXPENSIFY_APP_PATH, then sibling local clones, then",
+      `  clones ${expensifyAppRepo} into ${relative(process.cwd(), managedClonePath)}.`,
       "",
       "Examples:",
       "  pnpm benchmark:app",
@@ -132,6 +138,103 @@ const run = (command, args, options) => {
   }
 
   return result;
+};
+
+const normalizeRemoteUrl = (value) => {
+  return value
+    .trim()
+    .replace(/^git@github\.com:/, "https://github.com/")
+    .replace(/^ssh:\/\/git@github\.com\//, "https://github.com/")
+    .replace(/\.git$/, "")
+    .toLowerCase();
+};
+
+const hasExpensifyAppRemote = (path) => {
+  if (!existsSync(resolve(path, ".git"))) {
+    return false;
+  }
+
+  const result = spawnSync("git", ["config", "--get", "remote.origin.url"], {
+    cwd: path,
+    encoding: "utf8",
+    stdio: "pipe"
+  });
+
+  if (result.status !== 0) {
+    return false;
+  }
+
+  return normalizeRemoteUrl(result.stdout) === "https://github.com/expensify/app";
+};
+
+const isUsableAppCheckout = (path) => {
+  return existsSync(resolve(path, ".sniffler/config.json")) && hasExpensifyAppRemote(path);
+};
+
+const listDirectoryNames = (path) => {
+  try {
+    return readdirSync(path)
+      .map((entry) => resolve(path, entry))
+      .filter((entry) => {
+        try {
+          return statSync(entry).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+  } catch {
+    return [];
+  }
+};
+
+const discoverLocalAppCheckout = () => {
+  const candidates = [
+    process.env.SNIFFLER_EXPENSIFY_APP_PATH,
+    resolve(repoRoot, "../App"),
+    resolve(repoRoot, "../Expensify-App"),
+    resolve(repoRoot, "../expensify-app"),
+    managedClonePath,
+    ...listDirectoryNames(resolve(repoRoot, ".."))
+  ]
+    .filter((entry) => typeof entry === "string" && entry.length > 0)
+    .map((entry) => resolve(entry));
+
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) {
+      continue;
+    }
+
+    seen.add(candidate);
+
+    if (isUsableAppCheckout(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+};
+
+const ensureAppCheckout = (explicitApp) => {
+  if (explicitApp !== undefined) {
+    return explicitApp;
+  }
+
+  const discovered = discoverLocalAppCheckout();
+
+  if (discovered !== undefined) {
+    return discovered;
+  }
+
+  mkdirSync(dirname(managedClonePath), { recursive: true });
+  console.log(`Expensify/App checkout not found. Cloning into ${managedClonePath}`);
+  run("git", ["clone", "--depth", "1", expensifyAppRepo, managedClonePath], {
+    cwd: repoRoot,
+    stdio: "inherit"
+  });
+
+  return managedClonePath;
 };
 
 const loadDefaultScenarios = (appRoot) => {
@@ -236,7 +339,7 @@ const runScenario = ({ cliPath, appRoot, scenario, iterations, warmup }) => {
 
 const main = () => {
   const options = parseArgs(process.argv.slice(2));
-  const appRoot = options.app;
+  const appRoot = ensureAppCheckout(options.app);
   const configPath = resolve(appRoot, ".sniffler/config.json");
   const cliPath = resolve(repoRoot, "dist/cli.js");
 
