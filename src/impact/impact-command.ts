@@ -252,20 +252,20 @@ export const selectImpact = async (
   const scanWarnings: string[] = [];
   const graphNodes: GraphNode[] = [];
   const cacheEntries = cache?.files ?? {};
+  const canReuseCachedResolvedEdges =
+    cachePath !== undefined && cache !== null && Object.keys(cacheEntries).length === sourceFiles.length;
   const contentHashes = new Map<string, string>();
-  let cacheNeedsRefresh = cache === null;
+  let cacheNeedsRefresh = cache === null || !canReuseCachedResolvedEdges;
 
   for (const path of sourceFiles) {
     const text = await fs.readFile(path);
     const contentHash = hashText(text);
     contentHashes.set(path, contentHash);
     const cacheEntry = cacheEntries[path];
-    const scan =
-      cacheEntry !== undefined && cacheEntry.contentHash === contentHash
-        ? cacheEntry.scan
-        : scanFileText({ filePath: path, text });
+    const canReuseCachedEntry = cacheEntry !== undefined && cacheEntry.contentHash === contentHash;
+    const scan = canReuseCachedEntry ? cacheEntry.scan : scanFileText({ filePath: path, text });
 
-    if (cacheEntry === undefined || cacheEntry.contentHash !== contentHash) {
+    if (!canReuseCachedEntry) {
       cacheNeedsRefresh = true;
     }
 
@@ -275,7 +275,8 @@ export const selectImpact = async (
 
     graphNodes.push({
       path,
-      scan
+      scan,
+      resolvedEdges: canReuseCachedResolvedEdges && canReuseCachedEntry ? cacheEntry.resolvedEdges : undefined
     });
   }
 
@@ -288,10 +289,6 @@ export const selectImpact = async (
       conditions: config.resolver?.conditions
     }
   });
-
-  if (cachePath !== undefined && cache !== null && Object.keys(cacheEntries).length !== sourceFiles.length) {
-    cacheNeedsRefresh = true;
-  }
 
   if (cachePath !== undefined && cacheNeedsRefresh) {
     const resolvedEdgesByFrom = new Map<string, Array<ResolvedEdge>>();
