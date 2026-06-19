@@ -35,6 +35,13 @@ export type ResolveContext = {
   };
   importKind?: ResolveImportKind;
   resolutionCache?: Map<string, ResolveResult>;
+  onWarning?: (warning: {
+    resolver: string;
+    warning: string;
+    specifier: string;
+    fromFile: string;
+    importKind: ResolveImportKind;
+  }) => void;
 };
 
 export type ResolveResult =
@@ -107,6 +114,13 @@ export const resolveImport = async (
     return context.resolutionCache.get(cacheKey) as ResolveResult;
   }
 
+  let lastUsefulWarning:
+    | {
+        resolver: string;
+        warning: string;
+      }
+    | undefined;
+
   const bareSpecifier = !specifier.startsWith("./") && !specifier.startsWith("../") && !specifier.startsWith("/");
 
   if (
@@ -120,10 +134,36 @@ export const resolveImport = async (
 
   for (const resolver of resolvers) {
     const result = await resolver.resolve(specifier, fromFile, context);
-    if (result.type !== "unresolved") {
-      context.resolutionCache?.set(cacheKey, result);
-      return result;
+    if (result.type === "unresolved") {
+      if (!result.warning.startsWith("Not a ")) {
+        lastUsefulWarning = {
+          resolver: resolver.name,
+          warning: result.warning
+        };
+      }
+      continue;
     }
+
+    context.resolutionCache?.set(cacheKey, result);
+    return result;
+  }
+
+  if (lastUsefulWarning !== undefined) {
+    context.onWarning?.({
+      resolver: lastUsefulWarning.resolver,
+      warning: lastUsefulWarning.warning,
+      specifier,
+      fromFile,
+      importKind
+    });
+  } else {
+    context.onWarning?.({
+      resolver: "resolve-import",
+      warning: `Unable to resolve ${specifier} from ${fromFile}`,
+      specifier,
+      fromFile,
+      importKind
+    });
   }
 
   const result: ResolveResult = {

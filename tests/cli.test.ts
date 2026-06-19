@@ -3,7 +3,10 @@ import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import { createSniffler } from "../src/create-sniffler.js";
 import { runCli } from "../src/cli.js";
 
-const createFixtureFileSystem = (testMapTargets: ReadonlyArray<string> = ["src/feature.ts"]) => {
+const createFixtureFileSystem = (
+  testMapTargets: ReadonlyArray<string> = ["src/feature.ts"],
+  includeScannerWarning = false
+) => {
   return createMemoryFileSystem({
     ".sniffler/config.json": JSON.stringify({
       output: {
@@ -21,10 +24,17 @@ const createFixtureFileSystem = (testMapTargets: ReadonlyArray<string> = ["src/f
         }
       ]
     }),
-    "src/feature.ts": [
-      'import "./shared.ts";',
-      "export const feature = true;"
-    ].join("\n"),
+    "src/feature.ts": includeScannerWarning
+      ? [
+          "const path = getPath();",
+          "await import(path);",
+          'import "./shared.ts";',
+          "export const feature = true;"
+        ].join("\n")
+      : [
+          'import "./shared.ts";',
+          "export const feature = true;"
+        ].join("\n"),
     "src/shared.ts": "export const shared = true;"
   });
 };
@@ -72,7 +82,7 @@ describe("CLI impact command", () => {
   });
 
   it("writes diagnostics when enabled", async () => {
-    const fs = createFixtureFileSystem();
+    const fs = createFixtureFileSystem(["src/feature.ts"], true);
     const output: string[] = [];
 
     const result = await runCli(
@@ -97,11 +107,34 @@ describe("CLI impact command", () => {
       version: number;
       status: string;
       stages: Array<{ name: string; durationMs: number }>;
+      warnings: Array<{
+        source: string;
+        resolver?: string;
+        type?: string;
+        kind?: string;
+        message: string;
+        file: string;
+        specifier?: string;
+        importKind?: string;
+        location?: { line: number; column: number };
+      }>;
       metrics: Record<string, number | string | boolean>;
     }>(".sniffler/diagnostics.json");
     expect(diagnostics).toMatchObject({
       version: 1,
       status: "success",
+      warnings: [
+        {
+          source: "scanner",
+          type: "unresolved-dynamic-import",
+          file: "src/feature.ts",
+          message: "src/feature.ts:2 dynamic import target is not statically resolvable",
+          location: {
+            line: 2,
+            column: 14
+          }
+        }
+      ],
       metrics: {
         sourceFiles: 2,
         cacheEntries: 0,
@@ -112,7 +145,7 @@ describe("CLI impact command", () => {
         changedFiles: 1,
         affectedModules: 2,
         recommendedTests: 1,
-        warnings: 0
+        warnings: 1
       }
     });
 
