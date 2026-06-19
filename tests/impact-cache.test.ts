@@ -89,6 +89,7 @@ const fixtureConfig = {
 const createFixtureFileSystem = (options: {
   appText: string;
   cache?: unknown;
+  cacheStale?: "content" | "metadata";
   extraFiles?: Record<string, string>;
 }) => {
   const entries: Record<string, string> = {
@@ -98,7 +99,8 @@ const createFixtureFileSystem = (options: {
         manifest: ".sniffler/test-map.json"
       },
       cache: {
-        path: ".sniffler/cache.json"
+        path: ".sniffler/cache.json",
+        ...(options.cacheStale === undefined ? {} : { stale: options.cacheStale })
       }
     }),
     ".sniffler/test-map.json": JSON.stringify({
@@ -254,6 +256,51 @@ describe("impact cache", () => {
     vi.clearAllMocks();
     await selectImpact({ changedFiles: ["src/app.ts"] }, { fs, cwd: ".", staleChecker: metadataChecker });
     expect(vi.mocked(scanFileText)).not.toHaveBeenCalled();
+  });
+
+  it("uses metadata stale checking when configured", async () => {
+    const metadataConfig = {
+      ...fixtureConfig,
+      cache: {
+        stale: "metadata" as const
+      }
+    };
+    const fs = createFixtureFileSystem({
+      appText: 'import "./shared";\nexport const app = 1;',
+      cacheStale: "metadata",
+      cache: {
+        version: 1,
+        configHash: getCacheConfigHash(metadataConfig),
+        scannerVersion: "scan-file-v1",
+        files: {
+          "src/app.ts": {
+            path: "src/app.ts",
+            contentHash: hashText('import "./shared";\nexport const app = 0;'),
+            metadata: {
+              size: 'import "./shared";\nexport const app = 1;'.length,
+              mtimeMs: 0
+            },
+            scan: appScanResult,
+            resolvedEdges: appResolvedEdges
+          },
+          "src/shared.ts": {
+            path: "src/shared.ts",
+            contentHash: hashText("export const shared = true;"),
+            metadata: {
+              size: "export const shared = true;".length,
+              mtimeMs: 0
+            },
+            scan: emptyScanResult,
+            resolvedEdges: []
+          }
+        }
+      }
+    });
+
+    await selectImpact({ changedFiles: ["src/app.ts"] }, { fs, cwd: "." });
+
+    expect(vi.mocked(scanFileText)).not.toHaveBeenCalled();
+    expect(vi.mocked(resolveImport)).not.toHaveBeenCalled();
   });
 
   it("recomputes resolved edges when the source inventory changes", async () => {

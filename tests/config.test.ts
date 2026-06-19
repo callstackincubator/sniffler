@@ -18,6 +18,21 @@ describe("loadConfig", () => {
     expect(result.configPath).toBe(defaultConfigPath);
     expect(result.config.tests?.manifest).toBe("custom/test-map.json");
     expect(result.config.output?.format).toBe("text");
+    expect(result.config.cache?.stale).toBe("content");
+  });
+
+  it("loads the configured cache stale strategy", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        cache: {
+          stale: "metadata"
+        }
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect(result.config.cache?.stale).toBe("metadata");
   });
 
   it("loads an explicit config path", async () => {
@@ -67,6 +82,22 @@ describe("loadConfig", () => {
     await expect(loadConfig({ fs })).rejects.toMatchObject({
       code: "SNIFFLER_INVALID_CONFIG",
       path: defaultConfigPath
+    });
+  });
+
+  it("fails with an actionable error when cache.stale is invalid", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        cache: {
+          stale: "timestamp"
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining('cache.stale must be "content" or "metadata"')
     });
   });
 });

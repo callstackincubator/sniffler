@@ -7,6 +7,7 @@ import { loadCache } from "../cache/load-cache.js";
 import { saveCache } from "../cache/save-cache.js";
 import {
   createContentHashStaleChecker,
+  createMetadataStaleChecker,
   readSourceFileMetadata,
   type StaleChecker
 } from "../cache/stale-checker.js";
@@ -242,12 +243,14 @@ export const selectImpact = async (
   const fs = getFs(deps);
   const cwd = getCwd(deps);
   const diagnostics = deps.diagnostics ?? noopDiagnostics;
-  const staleChecker = deps.staleChecker ?? createContentHashStaleChecker(fs);
   const config = (
     await diagnostics.time("impact.config.load", async () => {
       return await loadConfig({ fs, configPath: input.configPath });
     })
   ).config;
+  const staleChecker =
+    deps.staleChecker ??
+    (config.cache?.stale === "metadata" ? createMetadataStaleChecker(fs) : createContentHashStaleChecker(fs));
   const configHash = getCacheConfigHash(config);
   const cachePath = config.cache?.path === undefined ? undefined : normalizePath(join(cwd, config.cache.path));
   const cache =

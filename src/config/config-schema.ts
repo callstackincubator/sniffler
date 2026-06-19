@@ -19,6 +19,7 @@ export type SnifflerConfig = {
   };
   cache?: {
     path?: string;
+    stale?: "content" | "metadata";
   };
   output?: {
     format?: "text" | "json";
@@ -51,7 +52,8 @@ export const defaultConfig = {
     manifest: ".sniffler/test-map.json"
   },
   cache: {
-    path: ".sniffler/cache.json"
+    path: ".sniffler/cache.json",
+    stale: "content"
   },
   output: {
     format: "text"
@@ -60,3 +62,4 @@ export const defaultConfig = {
 
 export type SnifflerWorkspaceStrategy = "package-json" | "pnpm-workspace";
 export type SnifflerOutputFormat = "text" | "json";
+export type SnifflerCacheStaleStrategy = "content" | "metadata";

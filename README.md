@@ -60,7 +60,7 @@ Start with a focused config that points Sniffler at your source roots and test m
 }
 ```
 
-Sniffler fills in defaults for source extensions, workspace discovery, TSConfig paths, cache location, and output format. See [docs/config.md](docs/config.md) for the full configuration reference.
+Sniffler fills in defaults for source extensions, workspace discovery, TSConfig paths, cache behavior, and output format. See [docs/config.md](docs/config.md) for the full configuration reference.
 
 Then run the CLI from the project root:
 

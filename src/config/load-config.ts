@@ -3,6 +3,7 @@ import {
   defaultConfig,
   defaultConfigPath,
   type SnifflerConfig,
+  type SnifflerCacheStaleStrategy,
   type SnifflerConfigFile,
   type SnifflerOutputFormat,
   type SnifflerWorkspaceStrategy
@@ -67,6 +68,10 @@ const isWorkspaceStrategyArray = (value: unknown): value is ReadonlyArray<Sniffl
 
 const isOutputFormat = (value: unknown): value is SnifflerOutputFormat => {
   return value === "text" || value === "json";
+};
+
+const isCacheStaleStrategy = (value: unknown): value is SnifflerCacheStaleStrategy => {
+  return value === "content" || value === "metadata";
 };
 
 const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
@@ -232,6 +237,14 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
         `Invalid config in ${path}: cache.path must be a string.`
       );
     }
+
+    if ("stale" in value.cache && value.cache.stale !== undefined && !isCacheStaleStrategy(value.cache.stale)) {
+      throw createLoadError(
+        "SNIFFLER_INVALID_CONFIG",
+        path,
+        `Invalid config in ${path}: cache.stale must be "content" or "metadata".`
+      );
+    }
   }
 
   if ("output" in value && value.output !== undefined) {
@@ -276,7 +289,8 @@ const normalizeConfig = (config: SnifflerConfigFile): SnifflerConfig => {
       manifest: config.tests?.manifest ?? defaultConfig.tests?.manifest
     },
     cache: {
-      path: config.cache?.path ?? defaultConfig.cache?.path
+      path: config.cache?.path ?? defaultConfig.cache?.path,
+      stale: config.cache?.stale ?? defaultConfig.cache?.stale
     },
     output: {
       format: config.output?.format ?? defaultConfig.output?.format
