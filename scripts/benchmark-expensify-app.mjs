@@ -16,7 +16,8 @@ const parseArgs = (argv) => {
     iterations: 5,
     warmup: 1,
     build: true,
-    scenarios: []
+    scenarios: [],
+    diagnostics: false
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -39,6 +40,11 @@ const parseArgs = (argv) => {
 
     if (arg === "--no-build") {
       options.build = false;
+      continue;
+    }
+
+    if (arg === "--diagnostics") {
+      options.diagnostics = true;
       continue;
     }
 
@@ -94,6 +100,7 @@ const printHelp = () => {
       "  --warmup <count>              Warmup runs per scenario (default: 1)",
       "  --scenario <name=file[,file]> Add or replace benchmark scenario; repeatable",
       "  --no-build                    Use existing dist/cli.js instead of running pnpm build",
+      "  --diagnostics                 Write and summarize local Sniffler diagnostics",
       "",
       "App checkout:",
       `  Uses ${relative(process.cwd(), managedClonePath)} if it exists, otherwise clones`,
@@ -213,9 +220,28 @@ const summarize = (samples) => {
   };
 };
 
+const summarizeDiagnostics = (samplesByStage) => {
+  const stages = Object.fromEntries(
+    Object.entries(samplesByStage)
+      .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
+      .map(([name, samples]) => {
+        return [
+          name,
+          {
+            samples: samples.length,
+            mean: samples.reduce((sum, sample) => sum + sample, 0) / samples.length,
+            median: percentile(samples, 50)
+          }
+        ];
+      })
+  );
+
+  return { stages };
+};
+
 const formatMs = (value) => `${value.toFixed(1)} ms`;
 
-const runScenario = ({ cliPath, appRoot, scenario, iterations, warmup }) => {
+const runScenario = ({ cliPath, appRoot, scenario, iterations, warmup, diagnostics }) => {
   const args = [
     cliPath,
     "impact",
@@ -224,7 +250,13 @@ const runScenario = ({ cliPath, appRoot, scenario, iterations, warmup }) => {
     "--format",
     "json"
   ];
+
+  if (diagnostics) {
+    args.push("--diagnostics");
+  }
+
   const samples = [];
+  const diagnosticsSamplesByStage = {};
   let lastImpact;
 
   for (let runIndex = 0; runIndex < warmup + iterations; runIndex += 1) {
@@ -232,20 +264,46 @@ const runScenario = ({ cliPath, appRoot, scenario, iterations, warmup }) => {
     const result = run(process.execPath, args, { cwd: appRoot });
     const duration = performance.now() - start;
     const impact = JSON.parse(result.stdout);
+    const diagnosticsPath = resolve(appRoot, ".sniffler/diagnostics.json");
 
     if (runIndex >= warmup) {
       samples.push(duration);
       lastImpact = impact;
+
+      if (diagnostics) {
+        if (!existsSync(diagnosticsPath)) {
+          throw new Error(`Diagnostics file not found: ${diagnosticsPath}`);
+        }
+
+        const runDiagnostics = JSON.parse(readFileSync(diagnosticsPath, "utf8"));
+        for (const stage of runDiagnostics.stages ?? []) {
+          if (typeof stage?.name !== "string" || typeof stage?.durationMs !== "number") {
+            continue;
+          }
+
+          if (diagnosticsSamplesByStage[stage.name] === undefined) {
+            diagnosticsSamplesByStage[stage.name] = [];
+          }
+
+          diagnosticsSamplesByStage[stage.name].push(stage.durationMs);
+        }
+      }
     }
   }
 
-  return {
+  const result = {
     ...summarize(samples),
     changedFiles: scenario.changedFiles,
     affectedModules: lastImpact?.affectedModules?.length ?? 0,
     recommendedTests: lastImpact?.recommendedTests?.length ?? 0,
     warnings: lastImpact?.warnings?.length ?? 0
   };
+
+  if (diagnostics) {
+    result.diagnostics = summarizeDiagnostics(diagnosticsSamplesByStage);
+  }
+
+  return result;
 };
 
 const main = () => {
@@ -283,7 +341,8 @@ const main = () => {
       appRoot,
       scenario,
       iterations: options.iterations,
-      warmup: options.warmup
+      warmup: options.warmup,
+      diagnostics: options.diagnostics
     });
 
     console.log(

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { normalizePath } from "../filesystem/path-utils.js";
+import { noopDiagnostics } from "../diagnostics/diagnostics.js";
 import type { ImpactCommandDeps, SelectImpactInput } from "../impact/impact-command.js";
 import { selectImpact } from "../impact/impact-command.js";
 
@@ -61,10 +62,13 @@ export const runRunCommand = async (
 
   const runner = deps.runner ?? createNodeRunner();
   const cwd = getCwd(deps);
+  const diagnostics = deps.diagnostics ?? noopDiagnostics;
 
-  return await runner({
-    command: input.command,
-    args: [...input.args, ...tests],
-    cwd
+  return await diagnostics.time("run.runner.execute", async () => {
+    return await runner({
+      command: input.command,
+      args: [...input.args, ...tests],
+      cwd
+    });
   });
 };

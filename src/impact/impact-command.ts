@@ -21,6 +21,7 @@ import { discoverWorkspaces } from "../workspaces/discover-workspaces.js";
 import { packageJsonWorkspacesStrategy } from "../workspaces/package-json-workspaces.js";
 import { pnpmWorkspaceStrategy } from "../workspaces/pnpm-workspace-yaml.js";
 import type { TsconfigPathsConfig } from "../resolvers/resolve-import.js";
+import { noopDiagnostics, type Diagnostics } from "../diagnostics/diagnostics.js";
 
 export type ImpactCommandInput = {
   base?: string;
@@ -48,6 +49,7 @@ export type ImpactCommandDeps = {
   fs?: FileSystem;
   cwd?: string;
   gitDiff?: GitDiffProvider;
+  diagnostics?: Diagnostics;
 };
 
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
@@ -231,107 +233,155 @@ export const selectImpact = async (
 ): Promise<ImpactOutput> => {
   const fs = getFs(deps);
   const cwd = getCwd(deps);
-  const config = (await loadConfig({ fs, configPath: input.configPath })).config;
+  const diagnostics = deps.diagnostics ?? noopDiagnostics;
+  const config = (
+    await diagnostics.time("impact.config.load", async () => {
+      return await loadConfig({ fs, configPath: input.configPath });
+    })
+  ).config;
   const configHash = getCacheConfigHash(config);
   const cachePath = config.cache?.path === undefined ? undefined : normalizePath(join(cwd, config.cache.path));
   const cache =
     cachePath === undefined
       ? null
-      : await loadCache(fs, cachePath, {
-          configHash,
-          scannerVersion: SCANNER_VERSION
+      : await diagnostics.time("impact.cache.load", async () => {
+          return await loadCache(fs, cachePath, {
+            configHash,
+            scannerVersion: SCANNER_VERSION
+          });
         });
-  const changedFiles = await resolveChangedFilesFromGit(input, deps, cwd);
+  const changedFiles = await diagnostics.time("impact.changedFiles.resolve", async () => {
+    return await resolveChangedFilesFromGit(input, deps, cwd);
+  });
   const workspaceStrategies = [
     ...(config.workspaces?.strategies?.includes("package-json") ? [packageJsonWorkspacesStrategy] : []),
     ...(config.workspaces?.strategies?.includes("pnpm-workspace") ? [pnpmWorkspaceStrategy] : [])
   ];
-  const workspacePackages = await discoverWorkspaces(cwd, fs, workspaceStrategies);
-  const tsconfigPaths = await loadTsconfigPaths(fs, cwd, config);
-  const sourceFiles = await discoverSourceFiles(fs, cwd, config);
+  const workspacePackages = await diagnostics.time("impact.workspaces.discover", async () => {
+    return await discoverWorkspaces(cwd, fs, workspaceStrategies);
+  });
+  const tsconfigPaths = await diagnostics.time("impact.tsconfig.load", async () => {
+    return await loadTsconfigPaths(fs, cwd, config);
+  });
+  const sourceFiles = await diagnostics.time("impact.sources.discover", async () => {
+    return await discoverSourceFiles(fs, cwd, config);
+  });
   const scanWarnings: string[] = [];
   const graphNodes: GraphNode[] = [];
   const cacheEntries = cache?.files ?? {};
+  diagnostics.record("cacheEntries", Object.keys(cacheEntries).length);
+  diagnostics.record("sourceFiles", sourceFiles.length);
   const canReuseCachedResolvedEdges =
     cachePath !== undefined && cache !== null && Object.keys(cacheEntries).length === sourceFiles.length;
   const contentHashes = new Map<string, string>();
   let cacheNeedsRefresh = cache === null || !canReuseCachedResolvedEdges;
+  let cacheScanHits = 0;
+  let cacheScanMisses = 0;
+  let cachedResolvedEdgeFiles = 0;
 
-  for (const path of sourceFiles) {
-    const text = await fs.readFile(path);
-    const contentHash = hashText(text);
-    contentHashes.set(path, contentHash);
-    const cacheEntry = cacheEntries[path];
-    const canReuseCachedEntry = cacheEntry !== undefined && cacheEntry.contentHash === contentHash;
-    const scan = canReuseCachedEntry ? cacheEntry.scan : scanFileText({ filePath: path, text });
+  await diagnostics.time("impact.sources.scan", async () => {
+    for (const path of sourceFiles) {
+      const text = await fs.readFile(path);
+      const contentHash = hashText(text);
+      contentHashes.set(path, contentHash);
+      const cacheEntry = cacheEntries[path];
+      const canReuseCachedEntry = cacheEntry !== undefined && cacheEntry.contentHash === contentHash;
+      const scan = canReuseCachedEntry ? cacheEntry.scan : scanFileText({ filePath: path, text });
 
-    if (!canReuseCachedEntry) {
-      cacheNeedsRefresh = true;
+      if (canReuseCachedEntry) {
+        cacheScanHits += 1;
+      } else {
+        cacheScanMisses += 1;
+        cacheNeedsRefresh = true;
+      }
+
+      if (canReuseCachedResolvedEdges && canReuseCachedEntry) {
+        cachedResolvedEdgeFiles += 1;
+      }
+
+      for (const warning of scan.warnings) {
+        scanWarnings.push(warning.message);
+      }
+
+      graphNodes.push({
+        path,
+        scan,
+        resolvedEdges: canReuseCachedResolvedEdges && canReuseCachedEntry ? cacheEntry.resolvedEdges : undefined
+      });
     }
+  });
+  diagnostics.record("cacheScanHits", cacheScanHits);
+  diagnostics.record("cacheScanMisses", cacheScanMisses);
+  diagnostics.record("cachedResolvedEdgeFiles", cachedResolvedEdgeFiles);
+  diagnostics.record("graphNodes", graphNodes.length);
 
-    for (const warning of scan.warnings) {
-      scanWarnings.push(warning.message);
-    }
+  const graph = await diagnostics.time("impact.graph.build", async () => {
+    return await buildGraph(graphNodes, {
+      resolveContext: {
+        fs,
+        workspacePackages,
+        sourceExtensions: config.source?.extensions,
+        tsconfigPaths,
+        conditions: config.resolver?.conditions
+      }
+    });
+  });
+  diagnostics.record("graphEdges", graph.edges.length);
 
-    graphNodes.push({
-      path,
-      scan,
-      resolvedEdges: canReuseCachedResolvedEdges && canReuseCachedEntry ? cacheEntry.resolvedEdges : undefined
+  if (cachePath !== undefined && cacheNeedsRefresh) {
+    await diagnostics.time("impact.cache.save", async () => {
+      const resolvedEdgesByFrom = new Map<string, Array<ResolvedEdge>>();
+
+      for (const edge of graph.edges) {
+        const existing = resolvedEdgesByFrom.get(edge.from);
+
+        if (existing === undefined) {
+          resolvedEdgesByFrom.set(edge.from, [edge]);
+          continue;
+        }
+
+        existing.push(edge);
+      }
+
+      const nextCache: GraphCache = {
+        version: 1,
+        configHash,
+        scannerVersion: SCANNER_VERSION,
+        files: Object.fromEntries(
+          graph.nodes.map((node) => {
+            const entry: CacheEntry = {
+              path: node.path,
+              contentHash: contentHashes.get(node.path) ?? "",
+              scan: node.scan,
+              resolvedEdges: resolvedEdgesByFrom.get(node.path) ?? []
+            };
+
+            return [node.path, entry];
+          })
+        )
+      };
+
+      try {
+        await saveCache(fs, cachePath, nextCache);
+      } catch {
+        // Ignore cache write failure. Impact result must still complete.
+      }
     });
   }
 
-  const graph = await buildGraph(graphNodes, {
-    resolveContext: {
-      fs,
-      workspacePackages,
-      sourceExtensions: config.source?.extensions,
-      tsconfigPaths,
-      conditions: config.resolver?.conditions
-    }
+  const impact = await diagnostics.time("impact.traverse", async () => {
+    return await traverseImpact(graph, changedFiles);
   });
-
-  if (cachePath !== undefined && cacheNeedsRefresh) {
-    const resolvedEdgesByFrom = new Map<string, Array<ResolvedEdge>>();
-
-    for (const edge of graph.edges) {
-      const existing = resolvedEdgesByFrom.get(edge.from);
-
-      if (existing === undefined) {
-        resolvedEdgesByFrom.set(edge.from, [edge]);
-        continue;
-      }
-
-      existing.push(edge);
-    }
-
-    const nextCache: GraphCache = {
-      version: 1,
-      configHash,
-      scannerVersion: SCANNER_VERSION,
-      files: Object.fromEntries(
-        graph.nodes.map((node) => {
-          const entry: CacheEntry = {
-            path: node.path,
-            contentHash: contentHashes.get(node.path) ?? "",
-            scan: node.scan,
-            resolvedEdges: resolvedEdgesByFrom.get(node.path) ?? []
-          };
-
-          return [node.path, entry];
-        })
-      )
-    };
-
-    try {
-      await saveCache(fs, cachePath, nextCache);
-    } catch {
-      // Ignore cache write failure. Impact result must still complete.
-    }
-  }
-
-  const impact = await traverseImpact(graph, changedFiles);
-  const testMap = await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
-  const recommendedTests = matchTests({ testMap, impact });
+  diagnostics.record("changedFiles", changedFiles.length);
+  diagnostics.record("affectedModules", impact.affectedModules.length);
+  const testMap = await diagnostics.time("impact.testMap.load", async () => {
+    return await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
+  });
+  const recommendedTests = await diagnostics.time("impact.tests.match", async () => {
+    return matchTests({ testMap, impact });
+  });
+  diagnostics.record("recommendedTests", recommendedTests.length);
+  diagnostics.record("warnings", scanWarnings.length);
   return {
     changedFiles: sortUniqueStrings(changedFiles),
     affectedModules: sortUniqueStrings(impact.affectedModules),
@@ -348,7 +398,9 @@ export const runImpactCommand = async (
   const fs = getFs(deps);
   const config = (await loadConfig({ fs, configPath: input.configPath })).config;
   const format = input.format ?? config.output?.format ?? "text";
-  const rendered = format === "json" ? renderJsonOutput(output) : renderTextOutput(output);
+  const rendered = await (deps.diagnostics ?? noopDiagnostics).time("impact.output.render", async () => {
+    return format === "json" ? renderJsonOutput(output) : renderTextOutput(output);
+  });
 
   return {
     exitCode: 0,

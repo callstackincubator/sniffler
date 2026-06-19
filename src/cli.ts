@@ -3,6 +3,8 @@
 import cac from "cac";
 import packageJson from "../package.json" with { type: "json" };
 import { pathToFileURL } from "node:url";
+import { createDiagnostics, noopDiagnostics } from "./diagnostics/diagnostics.js";
+import { createNodeFileSystem } from "./filesystem/node-filesystem.js";
 import type { ImpactCommandInput } from "./impact/impact-command.js";
 import { runImpactCommand } from "./impact/impact-command.js";
 import type { RunCommandDeps, RunCommandInput } from "./run/run-command.js";
@@ -61,6 +63,7 @@ const impactHelpText = [
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
+  "  --diagnostics     Write local timing diagnostics to .sniffler/diagnostics.json",
   "  --format <text|json>  Override the configured output format",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
@@ -76,6 +79,7 @@ const runHelpText = [
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
+  "  --diagnostics     Write local timing diagnostics to .sniffler/diagnostics.json",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
 
@@ -103,8 +107,8 @@ type ParsedSelectionOptions = Record<string, unknown> & {
   "--"?: ReadonlyArray<string>;
 };
 
-const allowedImpactOptionKeys = new Set(["base", "head", "format", "config"]);
-const allowedRunOptionKeys = new Set(["base", "head", "config"]);
+const allowedImpactOptionKeys = new Set(["base", "head", "format", "config", "diagnostics"]);
+const allowedRunOptionKeys = new Set(["base", "head", "config", "diagnostics"]);
 
 const toFlagName = (key: string): string => {
   return `--${key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
@@ -317,6 +321,7 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
     .command("impact [...files]", "Analyze changed files and select impacted E2E tests")
     .option("--base <ref>", "Git base ref for changed-file discovery")
     .option("--head <ref>", "Git head ref for changed-file discovery")
+    .option("--diagnostics", "Write local timing diagnostics to .sniffler/diagnostics.json")
     .option("--format <format>", "Override configured output format")
     .option("--config <path>", "Path to .sniffler/config.json")
     .action(async (files: ReadonlyArray<string> = [], options: ParsedSelectionOptions) => {
@@ -326,14 +331,39 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
         return emitValidationError(io, parsed.message, renderImpactHelp());
       }
 
+      const diagnostics =
+        options.diagnostics === true
+          ? createDiagnostics({
+              enabled: true,
+              fs: deps.fs ?? createNodeFileSystem(),
+              cwd: deps.cwd ?? process.cwd()
+            })
+          : noopDiagnostics;
+      let status: "success" | "error" = "success";
+      let errorMessage: string | undefined;
+
       try {
-        const result = await runImpactCommand(parsed.input, deps);
+        const result = await runImpactCommand(parsed.input, {
+          ...deps,
+          diagnostics
+        });
+        if (result.exitCode !== 0) {
+          status = "error";
+          errorMessage = `exit code ${result.exitCode}`;
+        }
         io.stdout(result.output);
         return { exitCode: result.exitCode };
       } catch (error) {
+        status = "error";
         const message = error instanceof Error ? error.message : String(error);
+        errorMessage = message;
         io.stderr(`${message}\n`);
         return { exitCode: 1 };
+      } finally {
+        await diagnostics.flush({
+          status,
+          error: errorMessage
+        });
       }
     });
 
@@ -341,6 +371,7 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
     .command("run [...files]", "Select impacted E2E tests and execute a command")
     .option("--base <ref>", "Git base ref for changed-file discovery")
     .option("--head <ref>", "Git head ref for changed-file discovery")
+    .option("--diagnostics", "Write local timing diagnostics to .sniffler/diagnostics.json")
     .option("--config <path>", "Path to .sniffler/config.json")
     .allowUnknownOptions()
     .action(async (files: ReadonlyArray<string> = [], options: ParsedSelectionOptions) => {
@@ -350,13 +381,38 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
         return emitValidationError(io, parsed.message, renderRunHelp());
       }
 
+      const diagnostics =
+        options.diagnostics === true
+          ? createDiagnostics({
+              enabled: true,
+              fs: deps.fs ?? createNodeFileSystem(),
+              cwd: deps.cwd ?? process.cwd()
+            })
+          : noopDiagnostics;
+      let status: "success" | "error" = "success";
+      let errorMessage: string | undefined;
+
       try {
-        const result = await runRunCommand(parsed.input, deps);
+        const result = await runRunCommand(parsed.input, {
+          ...deps,
+          diagnostics
+        });
+        if (result.exitCode !== 0) {
+          status = "error";
+          errorMessage = `exit code ${result.exitCode}`;
+        }
         return { exitCode: result.exitCode };
       } catch (error) {
+        status = "error";
         const message = error instanceof Error ? error.message : String(error);
+        errorMessage = message;
         io.stderr(`${message}\n`);
         return { exitCode: 1 };
+      } finally {
+        await diagnostics.flush({
+          status,
+          error: errorMessage
+        });
       }
     });
 
