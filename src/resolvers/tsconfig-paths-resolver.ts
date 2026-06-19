@@ -35,6 +35,54 @@ const getCompiledTsconfigPaths = (context: ResolveContext): CompiledTsconfigPath
   return context.tsconfigPathsIndex ?? (context.tsconfigPaths === undefined ? undefined : compileTsconfigPathsConfig(context.tsconfigPaths));
 };
 
+const isExactPattern = (entry: {
+  pattern: string;
+  prefix: string;
+  suffix: string;
+}): boolean => {
+  return entry.prefix === entry.pattern && entry.suffix === "";
+};
+
+const matchesPattern = (
+  specifier: string,
+  entry: {
+    pattern: string;
+    prefix: string;
+    suffix: string;
+  }
+): boolean => {
+  if (isExactPattern(entry)) {
+    return specifier === entry.pattern;
+  }
+
+  return specifier.startsWith(entry.prefix) && specifier.endsWith(entry.suffix);
+};
+
+const compareTsconfigPathEntrySpecificity = (
+  left: {
+    prefix: string;
+    suffix: string;
+    order: number;
+  },
+  right: {
+    prefix: string;
+    suffix: string;
+    order: number;
+  }
+): number => {
+  const prefixDifference = right.prefix.length - left.prefix.length;
+  if (prefixDifference !== 0) {
+    return prefixDifference;
+  }
+
+  const suffixDifference = right.suffix.length - left.suffix.length;
+  if (suffixDifference !== 0) {
+    return suffixDifference;
+  }
+
+  return left.order - right.order;
+};
+
 const matchPattern = async (
   specifier: string,
   fromFile: string,
@@ -47,11 +95,11 @@ const matchPattern = async (
   context: ResolveContext,
   baseUrl?: string
 ): Promise<string | undefined> => {
-  if (entry.prefix === entry.pattern && entry.suffix === "") {
-    if (specifier !== entry.pattern) {
-      return undefined;
-    }
+  if (!matchesPattern(specifier, entry)) {
+    return undefined;
+  }
 
+  if (isExactPattern(entry)) {
     for (const replacement of entry.replacements) {
       const root = baseUrl === undefined ? "." : baseUrl;
       const candidate = normalizePath(join(root, replacement));
@@ -60,11 +108,6 @@ const matchPattern = async (
         return reportResolvedPath(resolved, baseUrl);
       }
     }
-
-    return undefined;
-  }
-
-  if (!specifier.startsWith(entry.prefix) || !specifier.endsWith(entry.suffix)) {
     return undefined;
   }
 
@@ -91,7 +134,12 @@ export const tsconfigPathsResolver: Resolver = {
       return { type: "unresolved", warning: "Not a tsconfig paths specifier" };
     }
 
-    for (const entry of compiled.entries) {
+    const matchingEntries = [...compiled.entries]
+      .map((entry, order) => ({ ...entry, order }))
+      .filter((entry) => matchesPattern(specifier, entry))
+      .sort(compareTsconfigPathEntrySpecificity);
+
+    for (const entry of matchingEntries) {
       const resolved = await matchPattern(
         specifier,
         fromFile,

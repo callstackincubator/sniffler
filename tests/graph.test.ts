@@ -25,6 +25,21 @@ describe("relativeResolver", () => {
       resolver: "relative"
     });
   });
+
+  it("resolves extensionless relative imports to configured source files", async () => {
+    const context = {
+      fs: createMemoryFileSystem({
+        "src/components/Button.tsx": "export const Button = true;"
+      }),
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./Button", "src/components/App.tsx", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.tsx",
+      resolver: "relative"
+    });
+  });
 });
 
 describe("graph traversal", () => {

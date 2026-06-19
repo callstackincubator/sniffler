@@ -147,6 +147,58 @@ describe("tsconfigPathsResolver", () => {
       resolver: "tsconfig-paths"
     });
   });
+
+  it("falls back to later replacements when an earlier tsconfig path target is missing", async () => {
+    const fs = createMemoryFileSystem({
+      "src/fallback/Button.ts": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      sourceExtensions: [".ts"],
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@components/*": ["src/missing/*", "src/fallback/*"]
+        }
+      }
+    };
+
+    await expect(
+      tsconfigPathsResolver.resolve("@components/Button", "src/app.ts", context)
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "src/fallback/Button.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
+
+  it("prefers the most specific matching tsconfig path pattern", async () => {
+    const fs = createMemoryFileSystem({
+      "src/broad/components/Button.ts": "export const BroadButton = true;",
+      "src/specific/Button.ts": "export const SpecificButton = true;"
+    });
+
+    const context = {
+      fs,
+      sourceExtensions: [".ts"],
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@app/*": ["src/broad/*"],
+          "@app/components/*": ["src/specific/*"]
+        }
+      }
+    };
+
+    await expect(
+      tsconfigPathsResolver.resolve("@app/components/Button", "src/app.ts", context)
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "src/specific/Button.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
 });
 
 describe("workspacePackageResolver", () => {
@@ -185,5 +237,64 @@ describe("resolveImport", () => {
         type: "external"
       }
     );
+  });
+
+  it("continues after unresolved resolvers and stops at the first resolved result", async () => {
+    const calls: string[] = [];
+    const context = { fs: createMemoryFileSystem() };
+    const firstResolver = {
+      name: "first",
+      resolve: async () => {
+        calls.push("first");
+        return { type: "unresolved" as const, warning: "not handled" };
+      }
+    };
+    const secondResolver = {
+      name: "second",
+      resolve: async () => {
+        calls.push("second");
+        return { type: "resolved" as const, path: "src/target.ts", resolver: "second" };
+      }
+    };
+    const thirdResolver = {
+      name: "third",
+      resolve: async () => {
+        calls.push("third");
+        return { type: "resolved" as const, path: "src/other.ts", resolver: "third" };
+      }
+    };
+
+    await expect(
+      resolveImport("virtual", "src/index.ts", context, [firstResolver, secondResolver, thirdResolver])
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "src/target.ts",
+      resolver: "second"
+    });
+    expect(calls).toEqual(["first", "second"]);
+  });
+
+  it("stops resolver orchestration at the first external result", async () => {
+    const calls: string[] = [];
+    const context = { fs: createMemoryFileSystem() };
+    const externalResolver = {
+      name: "external",
+      resolve: async () => {
+        calls.push("external");
+        return { type: "external" as const };
+      }
+    };
+    const resolvedResolver = {
+      name: "resolved",
+      resolve: async () => {
+        calls.push("resolved");
+        return { type: "resolved" as const, path: "src/target.ts", resolver: "resolved" };
+      }
+    };
+
+    await expect(resolveImport("react", "src/index.ts", context, [externalResolver, resolvedResolver])).resolves.toEqual({
+      type: "external"
+    });
+    expect(calls).toEqual(["external"]);
   });
 });
