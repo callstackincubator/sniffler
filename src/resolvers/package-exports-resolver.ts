@@ -11,6 +11,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 };
 
+const statIfFile = async (path: string, context: ResolveContext): Promise<string | undefined> => {
+  const normalizedPath = normalizePath(path);
+
+  try {
+    const stat = await context.fs.stat(normalizedPath);
+    return stat.isFile ? normalizedPath : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const parsePackageSpecifier = (
   specifier: string
 ): { packageName: string; subpathKey: string } | undefined => {
@@ -54,15 +65,17 @@ const parsePackageSpecifier = (
 const resolveCandidate = async (candidate: string, context: ResolveContext): Promise<string | undefined> => {
   const normalizedCandidate = normalizePath(candidate);
 
-  if (await context.fs.exists(normalizedCandidate)) {
-    return normalizedCandidate;
+  const exactMatch = await statIfFile(normalizedCandidate, context);
+  if (exactMatch !== undefined) {
+    return exactMatch;
   }
 
   for (const extension of candidateExtensions) {
     const extendedCandidate = `${normalizedCandidate}${extension}`;
 
-    if (await context.fs.exists(extendedCandidate)) {
-      return normalizePath(extendedCandidate);
+    const resolved = await statIfFile(extendedCandidate, context);
+    if (resolved !== undefined) {
+      return resolved;
     }
   }
 
