@@ -94,6 +94,9 @@ export const createMemoryFileSystem = (entries: Record<string, string> = {}): Me
   return {
     seed,
     readFile: readFileInternal,
+    readFileBuffer: async (path: string) => {
+      return Buffer.from(await readFileInternal(path), "utf8");
+    },
     readJson: async <T>(path: string) => {
       const text = await readFileInternal(path);
       try {

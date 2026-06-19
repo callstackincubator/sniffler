@@ -129,6 +129,10 @@ const isCacheEntry = (key: string, value: unknown): value is CacheEntry => {
     typeof value.path === "string" &&
     value.path === key &&
     typeof value.contentHash === "string" &&
+    (value.metadata === undefined ||
+      (isRecord(value.metadata) &&
+        typeof value.metadata.size === "number" &&
+        typeof value.metadata.mtimeMs === "number")) &&
     isScanResult(value.scan) &&
     Array.isArray(value.resolvedEdges) &&
     value.resolvedEdges.every(isResolvedEdge)

@@ -19,8 +19,14 @@ export type ResolvedEdge = {
 export type CacheEntry = {
   path: string;
   contentHash: string;
+  metadata?: SourceFileMetadata;
   scan: ScanResult;
   resolvedEdges: ReadonlyArray<ResolvedEdge>;
+};
+
+export type SourceFileMetadata = {
+  size: number;
+  mtimeMs: number;
 };
 
 export type GraphCache = {
