@@ -18,6 +18,7 @@ export type SnifflerInvalidJsonError = Error & {
 
 export type FileSystem = {
   readFile: (path: string) => Promise<string>;
+  readFileBuffer?: (path: string) => Promise<Uint8Array>;
   readJson: <T>(path: string) => Promise<T>;
   exists: (path: string) => Promise<boolean>;
   glob: (patterns: ReadonlyArray<string>, options: GlobOptions) => Promise<Array<string>>;

@@ -44,6 +44,9 @@ export const createNodeFileSystem = (): FileSystem => {
 
   return {
     readFile: readFileInternal,
+    readFileBuffer: async (path: string) => {
+      return readFile(path);
+    },
     readJson: async <T>(path: string) => {
       const text = await readFileInternal(path);
 

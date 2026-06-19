@@ -23,6 +23,9 @@ const toCacheConfigInput = (config: SnifflerConfig): Record<string, unknown> => 
         import: config.resolver?.conditions?.import ?? [],
         require: config.resolver?.conditions?.require ?? []
       }
+    },
+    cache: {
+      stale: config.cache?.stale ?? "content"
     }
   };
 };

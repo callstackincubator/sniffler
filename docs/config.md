@@ -59,7 +59,8 @@ Every property is optional. Missing properties are filled from the defaults belo
     "manifest": ".sniffler/test-map.json"
   },
   "cache": {
-    "path": ".sniffler/cache.json"
+    "path": ".sniffler/cache.json",
+    "stale": "content"
   },
   "output": {
     "format": "text"
@@ -91,6 +92,7 @@ type SnifflerConfig = {
   };
   cache?: {
     path?: string;
+    stale?: "content" | "metadata";
   };
   output?: {
     format?: "text" | "json";
@@ -304,6 +306,38 @@ Set a custom path when CI or local tooling expects cache files somewhere else:
 
 The cache is invalidated when the normalized config hash or scanner version changes. Cache write failures are ignored so impact selection can still complete.
 
+Use `cache.stale` to choose how Sniffler decides whether cached file entries can be reused.
+
+### `cache.stale`
+
+Strategy Sniffler uses to decide whether a cached file entry is stale.
+
+Default:
+
+```json
+"content"
+```
+
+Allowed values:
+
+| Value | Meaning |
+| --- | --- |
+| `"content"` | Hashes file contents before reusing a cache entry. This is the safest default. |
+| `"metadata"` | Compares file size and modification time before reusing a cache entry. This can be faster on large repos, but it trusts filesystem metadata. |
+
+Opt into metadata-based stale checks when local speed matters and your filesystem/tooling preserves reliable mtimes:
+
+```json
+{
+  "cache": {
+    "path": ".sniffler/cache.json",
+    "stale": "metadata"
+  }
+}
+```
+
+Switching this value invalidates the cache through Sniffler's normalized config hash.
+
 ### `output.format`
 
 Default output format for `sniffler impact`.
@@ -359,7 +393,8 @@ sniffler impact --format json --base origin/main --head HEAD
     "manifest": ".sniffler/test-map.json"
   },
   "cache": {
-    "path": ".sniffler/cache.json"
+    "path": ".sniffler/cache.json",
+    "stale": "content"
   },
   "output": {
     "format": "text"

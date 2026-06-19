@@ -55,6 +55,84 @@ describe("CLI impact command", () => {
     expect(output.join("")).toContain("path: src/shared.ts -> src/feature.ts");
   });
 
+  it("does not write diagnostics by default", async () => {
+    const fs = createFixtureFileSystem();
+
+    const result = await runCli(
+      ["impact", "src/shared.ts"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(await fs.exists(".sniffler/diagnostics.json")).toBe(false);
+  });
+
+  it("writes diagnostics when enabled", async () => {
+    const fs = createFixtureFileSystem();
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--diagnostics", "src/shared.ts"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("Recommended E2E tests:");
+    expect(output.join("")).not.toContain("diagnostics.json");
+    expect(await fs.exists(".sniffler/diagnostics.json")).toBe(true);
+
+    const diagnostics = await fs.readJson<{
+      version: number;
+      status: string;
+      stages: Array<{ name: string; durationMs: number }>;
+      metrics: Record<string, number | string | boolean>;
+    }>(".sniffler/diagnostics.json");
+    expect(diagnostics).toMatchObject({
+      version: 1,
+      status: "success",
+      metrics: {
+        sourceFiles: 2,
+        cacheEntries: 0,
+        cacheScanHits: 0,
+        cacheScanMisses: 2,
+        cachedResolvedEdgeFiles: 0,
+        graphNodes: 2,
+        changedFiles: 1,
+        affectedModules: 2,
+        recommendedTests: 1,
+        warnings: 0
+      }
+    });
+
+    expect(Array.isArray(diagnostics.stages)).toBe(true);
+    expect(diagnostics.stages.map((stage) => stage.name)).toEqual(
+      expect.arrayContaining([
+        "impact.config.load",
+        "impact.changedFiles.resolve",
+        "impact.workspaces.discover",
+        "impact.tsconfig.load",
+        "impact.sources.discover",
+        "impact.sources.scan",
+        "impact.graph.build",
+        "impact.traverse",
+        "impact.testMap.load",
+        "impact.tests.match"
+      ])
+    );
+  });
+
   it("renders text output for multiple positional changed files", async () => {
     const fs = createFixtureFileSystem(["src/shared.ts", "src/feature.ts"]);
     const output: string[] = [];
@@ -212,6 +290,29 @@ describe("CLI impact command", () => {
     expect(stdout.join("")).toContain("sniffler impact");
   });
 
+  it("rejects unknown options", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--mystery", "src/shared.ts"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("Unknown option `--mystery`");
+    expect(stdout.join("")).toContain("sniffler impact");
+  });
+
   it("validates --format", async () => {
     const fs = createFixtureFileSystem();
     const stdout: string[] = [];
@@ -296,6 +397,66 @@ describe("CLI run command", () => {
       cwd: expect.any(String)
     });
     expect(output).toEqual([]);
+  });
+
+  it("does not write diagnostics by default", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runCli(
+      ["run", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(await fs.exists(".sniffler/diagnostics.json")).toBe(false);
+  });
+
+  it("writes diagnostics when enabled and preserves runner invocation", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runCli(
+      ["run", "--diagnostics", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).toHaveBeenCalledWith({
+      command: "pnpm",
+      args: ["vitest", "run", "e2e/feature.spec.ts"],
+      cwd: expect.any(String)
+    });
+    expect(await fs.exists(".sniffler/diagnostics.json")).toBe(true);
+
+    const diagnostics = await fs.readJson<{
+      version: number;
+      status: string;
+      stages: Array<{ name: string; durationMs: number }>;
+      metrics: Record<string, number | string | boolean>;
+    }>(".sniffler/diagnostics.json");
+    expect(diagnostics).toMatchObject({
+      version: 1,
+      status: "success",
+      metrics: {
+        sourceFiles: 2,
+        affectedModules: 2,
+        recommendedTests: 1,
+        warnings: 0
+      }
+    });
+    expect(Array.isArray(diagnostics.stages)).toBe(true);
+    expect(diagnostics.stages.map((stage) => stage.name)).toEqual(
+      expect.arrayContaining(["impact.config.load", "run.runner.execute"])
+    );
   });
 
   it("appends selected tests to the runner args in base/head mode", async () => {
@@ -438,6 +599,30 @@ describe("CLI run command", () => {
     expect(result.exitCode).toBe(1);
     expect(runner).not.toHaveBeenCalled();
     expect(stderr.join("")).toContain("sniffler run requires a runner command after --");
+    expect(stdout.join("")).toContain("sniffler run");
+  });
+
+  it("rejects unknown options", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["run", "--mystery", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("Unknown option: --mystery");
     expect(stdout.join("")).toContain("sniffler run");
   });
 });

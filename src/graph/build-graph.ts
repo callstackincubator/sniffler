@@ -17,6 +17,7 @@ import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
 export type GraphNode = {
   path: string;
   scan: ScanResult;
+  resolvedEdges?: ReadonlyArray<ResolvedEdge>;
 };
 
 export type DependencyGraph = {
@@ -73,11 +74,21 @@ export const buildGraph = async (
     const path = normalizePath(node.path);
     normalizedNodes.set(path, {
       path,
-      scan: node.scan
+      scan: node.scan,
+      resolvedEdges: node.resolvedEdges?.map((edge) => ({
+        ...edge,
+        from: path,
+        to: normalizePath(edge.to)
+      }))
     });
   }
 
   for (const node of normalizedNodes.values()) {
+    if (node.resolvedEdges !== undefined) {
+      edges.push(...node.resolvedEdges);
+      continue;
+    }
+
     for (const dependency of node.scan.imports) {
       const result = await resolveImport(
         dependency.specifier,
