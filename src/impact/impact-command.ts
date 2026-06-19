@@ -5,7 +5,11 @@ import type { CacheEntry, GraphCache, ResolvedEdge } from "../cache/cache-types.
 import { createGraphCacheStore, type GraphCacheStore } from "../cache/cache-store.js";
 import { loadCache } from "../cache/load-cache.js";
 import { saveCache } from "../cache/save-cache.js";
-import { createContentHashStaleChecker, type StaleChecker } from "../cache/stale-checker.js";
+import {
+  createContentHashStaleChecker,
+  readSourceFileMetadata,
+  type StaleChecker
+} from "../cache/stale-checker.js";
 import type { SnifflerConfig, SnifflerOutputFormat } from "../config/config-schema.js";
 import { loadConfig } from "../config/load-config.js";
 import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
@@ -300,6 +304,7 @@ export const selectImpact = async (
         scan = scanFileText({ filePath: path, text });
         contentHash = hashText(text);
       }
+      const metadata = cacheEntry === null ? await readSourceFileMetadata(fs, path) : cacheEntry.metadata;
       contentHashes.set(path, contentHash);
 
       if (canReuseCachedEntry) {
@@ -327,7 +332,7 @@ export const selectImpact = async (
       cacheStore.setEntry(path, {
         path,
         contentHash,
-        ...(cacheEntry?.metadata === undefined ? {} : { metadata: cacheEntry.metadata }),
+        ...(metadata === undefined ? {} : { metadata }),
         scan,
         resolvedEdges: graphNode.resolvedEdges ?? []
       });

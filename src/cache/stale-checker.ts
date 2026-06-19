@@ -18,7 +18,7 @@ const readBytes = async (fs: FileSystem, path: string): Promise<Uint8Array> => {
   return Buffer.from(await fs.readFile(path), "utf8");
 };
 
-const readMetadata = async (fs: FileSystem, path: string): Promise<SourceFileMetadata> => {
+export const readSourceFileMetadata = async (fs: FileSystem, path: string): Promise<SourceFileMetadata> => {
   const stat = await fs.stat(path);
 
   return {
@@ -52,7 +52,7 @@ export const createMetadataStaleChecker = (fs: FileSystem): StaleChecker => {
       }
 
       try {
-        const metadata = await readMetadata(fs, path);
+        const metadata = await readSourceFileMetadata(fs, path);
         return !metadataMatches(metadata, entry.metadata);
       } catch {
         return true;

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedEdge } from "../src/cache/cache-types.js";
 import { getCacheConfigHash } from "../src/cache/cache-key.js";
+import { createMetadataStaleChecker } from "../src/cache/stale-checker.js";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import type { ScanResult } from "../src/scanner/scanner-types.js";
 
@@ -204,6 +205,55 @@ describe("impact cache", () => {
     expect(result.affectedModules).toEqual(["src/app.ts"]);
     expect(vi.mocked(scanFileText)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(resolveImport)).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes metadata for rescanned entries so metadata mode can warm", async () => {
+    const fs = createFixtureFileSystem({
+      appText: 'import "./shared";\nexport const app = 1;',
+      cache: {
+        version: 1,
+        configHash: getCacheConfigHash(fixtureConfig),
+        scannerVersion: "scan-file-v1",
+        files: {
+          "src/app.ts": {
+            path: "src/app.ts",
+            contentHash: hashText('import "./shared";\nexport const app = 0;'),
+            scan: emptyScanResult,
+            resolvedEdges: []
+          },
+          "src/shared.ts": {
+            path: "src/shared.ts",
+            contentHash: hashText("export const shared = true;"),
+            metadata: {
+              size: "export const shared = true;".length,
+              mtimeMs: 0
+            },
+            scan: emptyScanResult,
+            resolvedEdges: []
+          }
+        }
+      }
+    });
+
+    const metadataChecker = createMetadataStaleChecker(fs);
+    await selectImpact({ changedFiles: ["src/app.ts"] }, { fs, cwd: ".", staleChecker: metadataChecker });
+
+    const savedCache = await fs.readJson<{
+      files: Record<string, { metadata?: { size: number; mtimeMs: number } }>;
+    }>(".sniffler/cache.json");
+
+    expect(savedCache.files["src/app.ts"].metadata).toEqual({
+      size: 'import "./shared";\nexport const app = 1;'.length,
+      mtimeMs: 0
+    });
+    expect(savedCache.files["src/shared.ts"].metadata).toEqual({
+      size: "export const shared = true;".length,
+      mtimeMs: 0
+    });
+
+    vi.clearAllMocks();
+    await selectImpact({ changedFiles: ["src/app.ts"] }, { fs, cwd: ".", staleChecker: metadataChecker });
+    expect(vi.mocked(scanFileText)).not.toHaveBeenCalled();
   });
 
   it("recomputes resolved edges when the source inventory changes", async () => {
