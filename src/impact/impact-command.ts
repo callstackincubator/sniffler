@@ -1,12 +1,11 @@
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { SCANNER_VERSION, getCacheConfigHash } from "../cache/cache-key.js";
 import type { CacheEntry, GraphCache, ResolvedEdge } from "../cache/cache-types.js";
+import { createGraphCacheStore, type GraphCacheStore } from "../cache/cache-store.js";
 import { loadCache } from "../cache/load-cache.js";
 import { saveCache } from "../cache/save-cache.js";
-import {
-  createContentHashSourceFileFreshness,
-  type SourceFileFreshness
-} from "../cache/source-file-freshness.js";
+import { createContentHashStaleChecker, type StaleChecker } from "../cache/stale-checker.js";
 import type { SnifflerConfig, SnifflerOutputFormat } from "../config/config-schema.js";
 import { loadConfig } from "../config/load-config.js";
 import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
@@ -53,11 +52,16 @@ export type ImpactCommandDeps = {
   cwd?: string;
   gitDiff?: GitDiffProvider;
   diagnostics?: Diagnostics;
-  sourceFileFreshness?: SourceFileFreshness;
+  staleChecker?: StaleChecker;
+  cacheStoreFactory?: (input: { cache: GraphCache | null; staleChecker: StaleChecker }) => GraphCacheStore;
 };
 
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+};
+
+const hashText = (text: string): string => {
+  return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 };
 
 const getFs = (deps: ImpactCommandDeps): FileSystem => {
@@ -234,7 +238,7 @@ export const selectImpact = async (
   const fs = getFs(deps);
   const cwd = getCwd(deps);
   const diagnostics = deps.diagnostics ?? noopDiagnostics;
-  const sourceFileFreshness = deps.sourceFileFreshness ?? createContentHashSourceFileFreshness(fs);
+  const staleChecker = deps.staleChecker ?? createContentHashStaleChecker(fs);
   const config = (
     await diagnostics.time("impact.config.load", async () => {
       return await loadConfig({ fs, configPath: input.configPath });
@@ -274,31 +278,29 @@ export const selectImpact = async (
   diagnostics.record("sourceFiles", sourceFiles.length);
   const canReuseCachedResolvedEdges =
     cachePath !== undefined && cache !== null && Object.keys(cacheEntries).length === sourceFiles.length;
+  const cacheStore = deps.cacheStoreFactory?.({ cache, staleChecker }) ?? createGraphCacheStore(cache, staleChecker);
   const contentHashes = new Map<string, string>();
   let cacheNeedsRefresh = cache === null || !canReuseCachedResolvedEdges;
   let cacheScanHits = 0;
   let cacheScanMisses = 0;
   let cachedResolvedEdgeFiles = 0;
-  const metadataByPath = new Map<string, CacheEntry["metadata"]>();
 
   await diagnostics.time("impact.sources.scan", async () => {
     for (const path of sourceFiles) {
-      const cacheEntry = cacheEntries[path];
-      const freshness = await sourceFileFreshness.check(path, cacheEntry);
-      const canReuseCachedEntry = cacheEntry !== undefined && freshness.status === "fresh";
+      const cacheEntry = await cacheStore.getEntry(path);
+      const canReuseCachedEntry = cacheEntry !== null;
       let scan: CacheEntry["scan"];
+      let contentHash: string;
 
-      if (freshness.status === "fresh") {
-        if (cacheEntry === undefined) {
-          throw new Error(`Source file freshness marked ${path} as fresh without a cache entry.`);
-        }
-
+      if (cacheEntry !== null) {
         scan = cacheEntry.scan;
+        contentHash = cacheEntry.contentHash;
       } else {
-        scan = scanFileText({ filePath: path, text: freshness.text });
+        const text = await fs.readFile(path);
+        scan = scanFileText({ filePath: path, text });
+        contentHash = hashText(text);
       }
-      contentHashes.set(path, freshness.contentHash);
-      metadataByPath.set(path, freshness.metadata);
+      contentHashes.set(path, contentHash);
 
       if (canReuseCachedEntry) {
         cacheScanHits += 1;
@@ -315,10 +317,19 @@ export const selectImpact = async (
         scanWarnings.push(warning.message);
       }
 
-      graphNodes.push({
+      const graphNode: GraphNode = {
         path,
         scan,
         resolvedEdges: canReuseCachedResolvedEdges && canReuseCachedEntry ? cacheEntry.resolvedEdges : undefined
+      };
+
+      graphNodes.push(graphNode);
+      cacheStore.setEntry(path, {
+        path,
+        contentHash,
+        ...(cacheEntry?.metadata === undefined ? {} : { metadata: cacheEntry.metadata }),
+        scan,
+        resolvedEdges: graphNode.resolvedEdges ?? []
       });
     }
   });
@@ -326,6 +337,7 @@ export const selectImpact = async (
   diagnostics.record("cacheScanMisses", cacheScanMisses);
   diagnostics.record("cachedResolvedEdgeFiles", cachedResolvedEdgeFiles);
   diagnostics.record("graphNodes", graphNodes.length);
+  const stagedEntries = cacheStore.entries();
 
   const graph = await diagnostics.time("impact.graph.build", async () => {
     return await buildGraph(graphNodes, {
@@ -360,17 +372,16 @@ export const selectImpact = async (
         configHash,
         scannerVersion: SCANNER_VERSION,
         files: Object.fromEntries(
-          graph.nodes.map((node) => {
-            const entry: CacheEntry = {
+          graph.nodes.map((node) => [
+            node.path,
+            {
               path: node.path,
               contentHash: contentHashes.get(node.path) ?? "",
-              ...(metadataByPath.get(node.path) === undefined ? {} : { metadata: metadataByPath.get(node.path) }),
+              ...(stagedEntries[node.path]?.metadata === undefined ? {} : { metadata: stagedEntries[node.path].metadata }),
               scan: node.scan,
               resolvedEdges: resolvedEdgesByFrom.get(node.path) ?? []
-            };
-
-            return [node.path, entry];
-          })
+            } satisfies CacheEntry
+          ])
         )
       };
 
