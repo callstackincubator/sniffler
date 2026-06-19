@@ -362,6 +362,43 @@ describe("graph traversal", () => {
     });
   });
 
+  it("does not emit warnings when workspace package resolution succeeds after package exports miss", async () => {
+    const graph = await buildGraph(
+      [
+        {
+          path: "src/app.ts",
+          scan: scanFileText({
+            filePath: "src/app.ts",
+            text: 'import "@acme/ui";'
+          })
+        }
+      ],
+      {
+        resolveContext: {
+          fs: createMemoryFileSystem(),
+          workspacePackages: [
+            {
+              name: "@acme/ui",
+              root: "packages/ui",
+              packageJsonPath: "packages/ui/package.json"
+            }
+          ]
+        }
+      }
+    );
+
+    expect(graph.edges).toEqual([
+      {
+        from: "src/app.ts",
+        to: "packages/ui",
+        resolver: "workspace-package",
+        entities: { type: "all" },
+        reExports: null
+      }
+    ]);
+    expect(graph.warnings).toEqual([]);
+  });
+
   it("caches identical resolver work within one graph build", async () => {
     const baseFs = createMemoryFileSystem({
       "packages/shared/src/button.ts": "export const button = true;",

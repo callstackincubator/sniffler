@@ -5,6 +5,27 @@ import { normalizePath } from "../filesystem/path-utils.js";
 
 export type DiagnosticsStatus = "success" | "error";
 
+export type DiagnosticsWarning =
+  | {
+      source: "scanner";
+      type: string;
+      message: string;
+      file: string;
+      location?: {
+        line: number;
+        column: number;
+      };
+    }
+  | {
+      source: "resolver";
+      kind: "import" | "export";
+      resolver: string;
+      message: string;
+      file: string;
+      specifier: string;
+      importKind: "import" | "require";
+    };
+
 export type DiagnosticsStage = {
   name: string;
   durationMs: number;
@@ -16,6 +37,7 @@ export type DiagnosticsPayload = {
   status: DiagnosticsStatus;
   durationMs: number;
   stages: ReadonlyArray<DiagnosticsStage>;
+  warnings: ReadonlyArray<DiagnosticsWarning>;
   metrics: Record<string, number | string | boolean>;
 };
 
@@ -23,6 +45,7 @@ export type Diagnostics = {
   time<T>(name: string, action: () => Promise<T>): Promise<T>;
   record(name: string, value: number | string | boolean): void;
   increment(name: string, amount?: number): void;
+  warning(warning: DiagnosticsWarning): void;
   flush(input?: { status?: DiagnosticsStatus; error?: string }): Promise<void>;
 };
 
@@ -34,6 +57,7 @@ export const noopDiagnostics: Diagnostics = {
   },
   record: () => {},
   increment: () => {},
+  warning: () => {},
   flush: async () => {}
 };
 
@@ -49,6 +73,7 @@ export const createDiagnostics = (input: {
   const startedAt = performance.now();
   const generatedAt = new Date().toISOString();
   const stages: DiagnosticsStage[] = [];
+  const warnings: DiagnosticsWarning[] = [];
   const metrics = new Map<string, number | string | boolean>();
   let flushed = false;
 
@@ -73,6 +98,9 @@ export const createDiagnostics = (input: {
       const next = typeof current === "number" ? current + amount : amount;
       metrics.set(name, next);
     },
+    warning: (warning: DiagnosticsWarning) => {
+      warnings.push(warning);
+    },
     flush: async (context?: { status?: DiagnosticsStatus; error?: string }) => {
       if (flushed) {
         return;
@@ -84,12 +112,15 @@ export const createDiagnostics = (input: {
         metrics.set("error", true);
       }
 
+      metrics.set("warnings", warnings.length);
+
       const payload: DiagnosticsPayload = {
         version: 1,
         generatedAt,
         status: context?.status ?? "success",
         durationMs: performance.now() - startedAt,
         stages,
+        warnings,
         metrics: Object.fromEntries(metrics)
       };
 

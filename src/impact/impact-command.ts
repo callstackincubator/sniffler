@@ -278,7 +278,7 @@ export const selectImpact = async (
   const sourceFiles = await diagnostics.time("impact.sources.discover", async () => {
     return await discoverSourceFiles(fs, cwd, config);
   });
-  const scanWarnings: string[] = [];
+  const warnings: string[] = [];
   const graphNodes: GraphNode[] = [];
   const cacheEntries = cache?.files ?? {};
   diagnostics.record("cacheEntries", Object.keys(cacheEntries).length);
@@ -322,7 +322,21 @@ export const selectImpact = async (
       }
 
       for (const warning of scan.warnings) {
-        scanWarnings.push(warning.message);
+        warnings.push(warning.message);
+        diagnostics.warning({
+          source: "scanner",
+          type: warning.type,
+          message: warning.message,
+          file: path,
+          ...(warning.loc === undefined
+            ? {}
+            : {
+                location: {
+                  line: warning.loc.line,
+                  column: warning.loc.column
+                }
+              })
+        });
       }
 
       const graphNode: GraphNode = {
@@ -358,6 +372,10 @@ export const selectImpact = async (
       }
     });
   });
+  for (const warning of graph.warnings) {
+    warnings.push(warning.message);
+    diagnostics.warning(warning);
+  }
   diagnostics.record("graphEdges", graph.edges.length);
 
   if (cachePath !== undefined && cacheNeedsRefresh) {
@@ -413,12 +431,12 @@ export const selectImpact = async (
     return matchTests({ testMap, impact });
   });
   diagnostics.record("recommendedTests", recommendedTests.length);
-  diagnostics.record("warnings", scanWarnings.length);
+  diagnostics.record("warnings", warnings.length);
   return {
     changedFiles: sortUniqueStrings(changedFiles),
     affectedModules: sortUniqueStrings(impact.affectedModules),
     recommendedTests,
-    warnings: sortUniqueStrings(scanWarnings)
+    warnings: sortUniqueStrings(warnings)
   };
 };
 
