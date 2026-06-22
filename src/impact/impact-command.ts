@@ -36,6 +36,7 @@ export type ImpactCommandInput = {
   changedFiles?: ReadonlyArray<string>;
   configPath?: string;
   format?: SnifflerOutputFormat;
+  platform?: string;
 };
 
 export type SelectImpactInput = ImpactCommandInput;
@@ -75,6 +76,11 @@ const getFs = (deps: ImpactCommandDeps): FileSystem => {
 
 const getCwd = (deps: ImpactCommandDeps): string => {
   return normalizePath(deps.cwd ?? process.cwd());
+};
+
+const normalizePlatform = (platform?: string): string | undefined => {
+  const trimmed = platform?.trim();
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
 const matchesPattern = (path: string, pattern: string): boolean => {
@@ -248,10 +254,11 @@ export const selectImpact = async (
       return await loadConfig({ fs, configPath: input.configPath });
     })
   ).config;
+  const platform = normalizePlatform(input.platform);
   const staleChecker =
     deps.staleChecker ??
     (config.cache?.stale === "metadata" ? createMetadataStaleChecker(fs) : createContentHashStaleChecker(fs));
-  const configHash = getCacheConfigHash(config);
+  const configHash = getCacheConfigHash(config, { platform });
   const cachePath = config.cache?.path === undefined ? undefined : normalizePath(join(cwd, config.cache.path));
   const cache =
     cachePath === undefined
@@ -353,6 +360,7 @@ export const selectImpact = async (
         fs,
         workspacePackages,
         sourceExtensions: config.source?.extensions,
+        platform,
         tsconfigPaths,
         conditions: config.resolver?.conditions
       }

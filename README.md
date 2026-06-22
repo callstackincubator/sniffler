@@ -23,6 +23,8 @@ Sniffler turns changed source files into the E2E tests they can affect so you ca
 
 - **Workspace Awareness**: Understand package and workspace layouts so impacted tests are found across real-world monorepos.
 
+- **React Native Platform Resolution**: Pass a runtime platform such as `android` to resolve `.android.*`, `.native.*`, and generic source files in Metro-style order.
+
 - **Configurable Cache**: Store graph data in `.sniffler/cache.json` to speed up repeated runs.
 
 - **Type-Safe & Developer-Friendly**: The CLI, graph, cache, and fixture-backed tests are all written in TypeScript so the behavior stays easy to evolve.
@@ -76,6 +78,13 @@ sniffler impact src/components/Button.tsx
 sniffler run src/components/Button.tsx -- pnpm vitest run
 ```
 
+For React Native projects, pass a runtime platform to resolve extensionless imports with Metro-style platform priority:
+
+```bash
+sniffler impact --platform android src/components/Button.android.tsx
+sniffler run --platform android src/components/Button.android.tsx -- pnpm vitest run
+```
+
 `sniffler run` appends impacted test files to the runner command and exits with the runner's exit code.
 
 ## Quick example
@@ -95,6 +104,7 @@ Sniffler currently supports:
 - **JavaScript and TypeScript**: Source graphs built from JS/TS files.
 - **Monorepos**: Workspace package discovery through `package.json` and `pnpm-workspace.yaml`.
 - **TypeScript path aliases**: Resolution through configured TSConfig path mappings.
+- **React Native platforms**: Optional runtime platform probing for extensionless relative imports and TSConfig aliases.
 - **Package exports**: Workspace package exports and package-name imports in supported setups.
 
 ## Made with ❤️ at Callstack
