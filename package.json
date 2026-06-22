@@ -2,12 +2,34 @@
   "name": "sniffler",
   "version": "0.0.0",
   "description": "Sniffler sniffs out the E2E tests your changes actually wake up.",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/callstackincubator/sniffler.git"
+  },
+  "bugs": {
+    "url": "https://github.com/callstackincubator/sniffler/issues"
+  },
+  "homepage": "https://github.com/callstackincubator/sniffler#readme",
+  "keywords": [
+    "cli",
+    "e2e",
+    "impact-analysis",
+    "javascript",
+    "monorepo",
+    "react-native",
+    "sniffler",
+    "typescript",
+    "vitest"
+  ],
+  "author": "Callstack Incubator",
   "bin": {
     "sniffler": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
