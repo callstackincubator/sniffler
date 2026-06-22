@@ -1,6 +1,7 @@
 import type { ResolvedEdge } from "../cache/cache-types.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { normalizePath } from "../filesystem/path-utils.js";
+import { noopDiagnostics, type Diagnostics } from "../diagnostics/diagnostics.js";
 import { relativeResolver } from "../resolvers/relative-resolver.js";
 import {
   compileTsconfigPathsConfig,
@@ -37,8 +38,16 @@ export type DependencyGraph = {
 };
 
 export type BuildGraphInput = {
+  diagnostics?: Diagnostics;
   resolveContext?: ResolveContext;
 };
+
+const resolvers = [
+  relativeResolver,
+  tsconfigPathsResolver,
+  packageExportsResolver,
+  workspacePackageResolver
+] as const;
 
 export const buildGraph = async (
   nodes: ReadonlyArray<GraphNode>,
@@ -59,8 +68,11 @@ export const buildGraph = async (
     writeFile: async () => undefined,
     rename: async () => undefined
   };
-  const resolveContext = input.resolveContext ?? { fs: fallbackFileSystem };
+  const resolveContext: ResolveContext = input.resolveContext ?? { fs: fallbackFileSystem };
+  const diagnostics = input.diagnostics ?? resolveContext.diagnostics ?? noopDiagnostics;
   const resolutionCache = new Map<string, Awaited<ReturnType<typeof resolveImport>>>();
+  const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+  const tsconfigPathsResolutionCache = new Map<string, Promise<Awaited<ReturnType<typeof resolveImport>>>>();
   const workspacePackagesByName = new Map<string, WorkspacePackage>(
     (resolveContext.workspacePackages ?? []).map((workspacePackage) => [
       workspacePackage.name,
@@ -73,15 +85,13 @@ export const buildGraph = async (
       : compileTsconfigPathsConfig(resolveContext.tsconfigPaths);
   const baseResolveContext: ResolveContext = {
     ...resolveContext,
+    diagnostics,
     workspacePackagesByName,
     tsconfigPathsIndex,
-    resolutionCache
+    resolutionCache,
+    sourceCandidateCache,
+    tsconfigPathsResolutionCache
   };
-
-  const normalizedNodes = new Map<string, GraphNode>();
-  const edges: ResolvedEdge[] = [];
-  const warnings: GraphWarning[] = [];
-
   const createResolveContext = (kind: GraphWarning["kind"]): ResolveContext => {
     return {
       ...baseResolveContext,
@@ -99,145 +109,202 @@ export const buildGraph = async (
     };
   };
 
-  for (const node of nodes) {
-    const path = normalizePath(node.path);
-    normalizedNodes.set(path, {
-      path,
-      scan: node.scan,
-      resolvedEdges: node.resolvedEdges?.map((edge) => ({
-        ...edge,
-        from: path,
-        to: normalizePath(edge.to)
-      }))
-    });
-  }
+  const normalizedNodes = new Map<string, GraphNode>();
+  const edges: ResolvedEdge[] = [];
+  const warnings: GraphWarning[] = [];
+  const normalizedNodesList = await diagnostics.time("impact.graph.nodes.normalize", async () => {
+    for (const node of nodes) {
+      const path = normalizePath(node.path);
+      normalizedNodes.set(path, {
+        path,
+        scan: node.scan,
+        resolvedEdges: node.resolvedEdges?.map((edge) => ({
+          ...edge,
+          from: path,
+          to: normalizePath(edge.to)
+        }))
+      });
+    }
 
-  for (const node of normalizedNodes.values()) {
+    return Array.from(normalizedNodes.values());
+  });
+
+  const nodesToResolve: GraphNode[] = [];
+  let graphResolvedEdgesFromCache = 0;
+
+  for (const node of normalizedNodesList) {
     if (node.resolvedEdges !== undefined) {
       edges.push(...node.resolvedEdges);
+      graphResolvedEdgesFromCache += 1;
       continue;
     }
 
-    for (const dependency of node.scan.imports) {
-      const result = await resolveImport(
-        dependency.specifier,
-        node.path,
-        {
-          ...createResolveContext("import"),
-          importKind: dependency.kind === "require" ? "require" : "import"
-        },
-        [
-          relativeResolver,
-          tsconfigPathsResolver,
-          packageExportsResolver,
-          workspacePackageResolver
-        ]
-      );
-
-      if (result.type !== "resolved") {
-        continue;
-      }
-
-      edges.push({
-        from: node.path,
-        to: result.path,
-        resolver: result.resolver,
-        entities: dependency.entities,
-        reExports: null
-      });
-    }
-
-    for (const exported of node.scan.exports) {
-      if (exported.kind === "local") {
-        continue;
-      }
-
-      const result = await resolveImport(
-        exported.specifier,
-        node.path,
-        {
-          ...createResolveContext("export"),
-          importKind: "import"
-        },
-        [
-          relativeResolver,
-          tsconfigPathsResolver,
-          packageExportsResolver,
-          workspacePackageResolver
-        ]
-      );
-
-      if (result.type !== "resolved") {
-        continue;
-      }
-
-      if (exported.kind === "re-export") {
-        edges.push({
-          from: node.path,
-          to: result.path,
-          resolver: result.resolver,
-          entities: {
-            type: "named",
-            entities: [
-              {
-                imported: exported.imported,
-                local: exported.exported === exported.imported ? undefined : exported.exported
-              }
-            ]
-          },
-          reExports: [
-            {
-              imported: exported.imported,
-              exported: exported.exported
-            }
-          ]
-        });
-        continue;
-      }
-
-      edges.push({
-        from: node.path,
-        to: result.path,
-        resolver: result.resolver,
-        entities: ALL_ENTITY_SELECTION,
-        reExports: ALL_ENTITY_SELECTION
-      });
-    }
+    nodesToResolve.push(node);
   }
 
-  const sortedEdges = edges
-    .map((edge) => ({
-      edge,
-      entityKey: JSON.stringify(edge.entities),
-      reExportKey: JSON.stringify(edge.reExports)
-    }))
-    .sort((left, right) => {
-      const fromComparison = left.edge.from.localeCompare(right.edge.from);
-      if (fromComparison !== 0) {
-        return fromComparison;
-      }
+  diagnostics.record("graphResolvedEdgesFromCache", graphResolvedEdgesFromCache);
 
-      const toComparison = left.edge.to.localeCompare(right.edge.to);
-      if (toComparison !== 0) {
-        return toComparison;
-      }
+  let graphImportSpecifiers = 0;
+  let graphExportSpecifiers = 0;
+  let graphImportResolved = 0;
+  let graphImportExternal = 0;
+  let graphImportUnresolved = 0;
+  let graphExportResolved = 0;
+  let graphExportExternal = 0;
+  let graphExportUnresolved = 0;
+  let graphResolvedEdgesCreated = 0;
 
-      const resolverComparison = left.edge.resolver.localeCompare(right.edge.resolver);
-      if (resolverComparison !== 0) {
-        return resolverComparison;
-      }
+  await diagnostics.time("impact.graph.resolve.imports", async () => {
+    for (const node of nodesToResolve) {
+      for (const dependency of node.scan.imports) {
+        graphImportSpecifiers += 1;
 
-      const entityComparison = left.entityKey.localeCompare(right.entityKey);
-      if (entityComparison !== 0) {
-        return entityComparison;
-      }
+        const result = await resolveImport(
+          dependency.specifier,
+          node.path,
+          {
+            ...createResolveContext("import"),
+            importKind: dependency.kind === "require" ? "require" : "import"
+          },
+          resolvers
+        );
 
-      return left.reExportKey.localeCompare(right.reExportKey);
-    })
-    .map(({ edge }) => edge);
+        if (result.type === "resolved") {
+          graphImportResolved += 1;
+          graphResolvedEdgesCreated += 1;
+          edges.push({
+            from: node.path,
+            to: result.path,
+            resolver: result.resolver,
+            entities: dependency.entities,
+            reExports: null
+          });
+          continue;
+        }
+
+        if (result.type === "external") {
+          graphImportExternal += 1;
+          continue;
+        }
+
+        graphImportUnresolved += 1;
+      }
+    }
+  });
+
+  await diagnostics.time("impact.graph.resolve.exports", async () => {
+    for (const node of nodesToResolve) {
+      for (const exported of node.scan.exports) {
+        if (exported.kind === "local") {
+          continue;
+        }
+
+        graphExportSpecifiers += 1;
+
+        const result = await resolveImport(
+          exported.specifier,
+          node.path,
+          {
+            ...createResolveContext("export"),
+            importKind: "import"
+          },
+          resolvers
+        );
+
+        if (result.type === "resolved") {
+          graphExportResolved += 1;
+          graphResolvedEdgesCreated += 1;
+          if (exported.kind === "re-export") {
+            edges.push({
+              from: node.path,
+              to: result.path,
+              resolver: result.resolver,
+              entities: {
+                type: "named",
+                entities: [
+                  {
+                    imported: exported.imported,
+                    local: exported.exported === exported.imported ? undefined : exported.exported
+                  }
+                ]
+              },
+              reExports: [
+                {
+                  imported: exported.imported,
+                  exported: exported.exported
+                }
+              ]
+            });
+            continue;
+          }
+
+          edges.push({
+            from: node.path,
+            to: result.path,
+            resolver: result.resolver,
+            entities: ALL_ENTITY_SELECTION,
+            reExports: ALL_ENTITY_SELECTION
+          });
+          continue;
+        }
+
+        if (result.type === "external") {
+          graphExportExternal += 1;
+          continue;
+        }
+
+        graphExportUnresolved += 1;
+      }
+    }
+  });
+
+  diagnostics.record("graphImportSpecifiers", graphImportSpecifiers);
+  diagnostics.record("graphExportSpecifiers", graphExportSpecifiers);
+  diagnostics.record("graphImportResolved", graphImportResolved);
+  diagnostics.record("graphImportExternal", graphImportExternal);
+  diagnostics.record("graphImportUnresolved", graphImportUnresolved);
+  diagnostics.record("graphExportResolved", graphExportResolved);
+  diagnostics.record("graphExportExternal", graphExportExternal);
+  diagnostics.record("graphExportUnresolved", graphExportUnresolved);
+  diagnostics.record("graphResolvedEdgesCreated", graphResolvedEdgesCreated);
+
+  diagnostics.record("graphEdgesSorted", edges.length);
+
+  const sortedEdges = await diagnostics.time("impact.graph.edges.sort", async () => {
+    return edges
+      .map((edge) => ({
+        edge,
+        entityKey: JSON.stringify(edge.entities),
+        reExportKey: JSON.stringify(edge.reExports)
+      }))
+      .sort((left, right) => {
+        const fromComparison = left.edge.from.localeCompare(right.edge.from);
+        if (fromComparison !== 0) {
+          return fromComparison;
+        }
+
+        const toComparison = left.edge.to.localeCompare(right.edge.to);
+        if (toComparison !== 0) {
+          return toComparison;
+        }
+
+        const resolverComparison = left.edge.resolver.localeCompare(right.edge.resolver);
+        if (resolverComparison !== 0) {
+          return resolverComparison;
+        }
+
+        const entityComparison = left.entityKey.localeCompare(right.entityKey);
+        if (entityComparison !== 0) {
+          return entityComparison;
+        }
+
+        return left.reExportKey.localeCompare(right.reExportKey);
+      })
+      .map(({ edge }) => edge);
+  });
 
   return {
-    nodes: Array.from(normalizedNodes.values()).sort((left, right) => left.path.localeCompare(right.path)),
+    nodes: normalizedNodesList.sort((left, right) => left.path.localeCompare(right.path)),
     edges: sortedEdges,
     warnings
   };

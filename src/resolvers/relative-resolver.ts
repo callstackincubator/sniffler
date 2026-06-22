@@ -17,7 +17,8 @@ const resolveRelativeCandidate = async (
   return resolveSourceFileCandidate(resolveRelativePath(specifier, fromFile), {
     fs: context.fs,
     sourceExtensions: context.sourceExtensions,
-    platform: context.platform
+    platform: context.platform,
+    sourceCandidateCache: context.sourceCandidateCache
   });
 };
 

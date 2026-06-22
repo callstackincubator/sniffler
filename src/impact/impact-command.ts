@@ -352,6 +352,7 @@ export const selectImpact = async (
 
   const graph = await diagnostics.time("impact.graph.build", async () => {
     return await buildGraph(graphNodes, {
+      diagnostics,
       resolveContext: {
         fs,
         workspacePackages,

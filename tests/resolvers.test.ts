@@ -1,9 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
-import { resolveImport } from "../src/resolvers/resolve-import.js";
+import { resolveImport, type ResolveResult } from "../src/resolvers/resolve-import.js";
 import { relativeResolver } from "../src/resolvers/relative-resolver.js";
+import { resolveSourceFileCandidate } from "../src/resolvers/source-file-candidate.js";
 import { tsconfigPathsResolver } from "../src/resolvers/tsconfig-paths-resolver.js";
+import { packageExportsResolver } from "../src/resolvers/package-exports-resolver.js";
 import { workspacePackageResolver } from "../src/resolvers/workspace-package-resolver.js";
+
+const createStatCountingFileSystem = (entries: Record<string, string> = {}) => {
+  const baseFs = createMemoryFileSystem(entries);
+  let statCalls = 0;
+
+  return {
+    fs: {
+      ...baseFs,
+      stat: async (path: string) => {
+        statCalls += 1;
+        return baseFs.stat(path);
+      }
+    },
+    getStatCalls: () => statCalls
+  };
+};
 
 describe("tsconfigPathsResolver", () => {
   it("resolves exact and wildcard tsconfig paths aliases", async () => {
@@ -361,6 +379,291 @@ describe("tsconfigPathsResolver platform probing", () => {
       path: "src/components/Button.ios.tsx",
       resolver: "tsconfig-paths"
     });
+  });
+});
+
+describe("source file candidate cache", () => {
+  it("reuses tsconfig candidate probes across fromFiles", async () => {
+    const { fs, getStatCalls } = createStatCountingFileSystem({
+      "packages/shared/src/button.ts": "export const button = true;"
+    });
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const tsconfigPathsResolutionCache = new Map<string, Promise<ResolveResult>>();
+    const context = {
+      fs,
+      sourceExtensions: [".ts", ".tsx"],
+      sourceCandidateCache,
+      tsconfigPathsResolutionCache,
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@shared/*": ["packages/shared/src/*"]
+        }
+      }
+    };
+
+    await expect(resolveImport("@shared/button", "apps/web/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "resolved",
+      path: "packages/shared/src/button.ts",
+      resolver: "tsconfig-paths"
+    });
+
+    await expect(resolveImport("@shared/button", "apps/native/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "resolved",
+      path: "packages/shared/src/button.ts",
+      resolver: "tsconfig-paths"
+    });
+
+    expect(getStatCalls()).toBe(2);
+  });
+
+  it("caches exact tsconfig aliases across fromFiles", async () => {
+    const { fs, getStatCalls } = createStatCountingFileSystem({
+      "packages/shared/src/index.ts": "export const index = true;"
+    });
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const tsconfigPathsResolutionCache = new Map<string, Promise<ResolveResult>>();
+    const context = {
+      fs,
+      sourceCandidateCache,
+      tsconfigPathsResolutionCache,
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@shared": ["packages/shared/src/index.ts"]
+        }
+      }
+    };
+
+    await expect(resolveImport("@shared", "apps/web/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "resolved",
+      path: "packages/shared/src/index.ts",
+      resolver: "tsconfig-paths"
+    });
+
+    await expect(resolveImport("@shared", "apps/native/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "resolved",
+      path: "packages/shared/src/index.ts",
+      resolver: "tsconfig-paths"
+    });
+
+    expect(getStatCalls()).toBe(1);
+  });
+
+  it("caches unresolved tsconfig candidate probes across fromFiles", async () => {
+    const { fs, getStatCalls } = createStatCountingFileSystem();
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const tsconfigPathsResolutionCache = new Map<string, Promise<ResolveResult>>();
+    const context = {
+      fs,
+      sourceExtensions: [".ts"],
+      sourceCandidateCache,
+      tsconfigPathsResolutionCache,
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@missing/*": ["src/missing/*"]
+        }
+      }
+    };
+
+    await expect(resolveImport("@missing/Button", "apps/web/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "unresolved",
+      warning: "Unable to resolve @missing/Button from apps/web/src/routes.ts"
+    });
+
+    await expect(resolveImport("@missing/Button", "apps/native/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "unresolved",
+      warning: "Unable to resolve @missing/Button from apps/native/src/routes.ts"
+    });
+
+    expect(getStatCalls()).toBe(3);
+  });
+
+  it("keeps tsconfig result cache separated by paths signature", async () => {
+    const fs = createMemoryFileSystem({
+      "packages/a/foo.ts": "export const foo = true;",
+      "packages/b/foo.ts": "export const foo = true;"
+    });
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const tsconfigPathsResolutionCache = new Map<string, Promise<ResolveResult>>();
+    const sharedContext = {
+      fs,
+      sourceCandidateCache,
+      tsconfigPathsResolutionCache
+    };
+
+    await expect(
+      resolveImport(
+        "@shared/foo",
+        "src/app.ts",
+        {
+          ...sharedContext,
+          tsconfigPaths: {
+            baseUrl: ".",
+            paths: {
+              "@shared/*": ["packages/a/*"]
+            }
+          }
+        },
+        [tsconfigPathsResolver]
+      )
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "packages/a/foo.ts",
+      resolver: "tsconfig-paths"
+    });
+
+    await expect(
+      resolveImport(
+        "@shared/foo",
+        "src/app.ts",
+        {
+          ...sharedContext,
+          tsconfigPaths: {
+            baseUrl: ".",
+            paths: {
+              "@shared/*": ["packages/b/*"]
+            }
+          }
+        },
+        [tsconfigPathsResolver]
+      )
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "packages/b/foo.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
+
+  it("keeps baseUrl-less wildcard caches scoped by fromFile directory", async () => {
+    const fs = createMemoryFileSystem({
+      "apps/web/src/components/button.ts": "export const button = true;",
+      "packages/shared/src/components/button.ts": "export const button = true;"
+    });
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const tsconfigPathsResolutionCache = new Map<string, Promise<ResolveResult>>();
+    const context = {
+      fs,
+      sourceCandidateCache,
+      tsconfigPathsResolutionCache,
+      tsconfigPaths: {
+        paths: {
+          "@shared/*": ["components/*"]
+        }
+      }
+    };
+
+    await expect(resolveImport("@shared/button", "apps/web/src/routes.ts", context, [tsconfigPathsResolver])).resolves.toEqual({
+      type: "resolved",
+      path: "apps/web/src/components/button.ts",
+      resolver: "tsconfig-paths"
+    });
+
+    await expect(
+      resolveImport("@shared/button", "packages/shared/src/routes.ts", context, [tsconfigPathsResolver])
+    ).resolves.toEqual({
+      type: "resolved",
+      path: "packages/shared/src/components/button.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
+
+  it("keeps relative resolution stable while reusing candidate probes", async () => {
+    const { fs, getStatCalls } = createStatCountingFileSystem({
+      "src/components/Button.ts": "export const Button = true;"
+    });
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const context = {
+      fs,
+      sourceCandidateCache
+    };
+
+    await expect(relativeResolver.resolve("./components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.ts",
+      resolver: "relative"
+    });
+
+    await expect(relativeResolver.resolve("./components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.ts",
+      resolver: "relative"
+    });
+
+    expect(getStatCalls()).toBe(2);
+  });
+
+  it("keeps platform-specific and extension-specific candidate caches separate", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.android.tsx": "export const Button = true;",
+      "src/components/Button.ios.tsx": "export const Button = true;",
+      "src/components/Button.ts": "export const Button = true;",
+      "src/components/Button.tsx": "export const Button = true;"
+    });
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+
+    await expect(
+      resolveSourceFileCandidate("src/components/Button", {
+        fs,
+        platform: "android",
+        sourceExtensions: [".tsx"],
+        sourceCandidateCache
+      })
+    ).resolves.toBe("src/components/Button.android.tsx");
+
+    await expect(
+      resolveSourceFileCandidate("src/components/Button", {
+        fs,
+        platform: "ios",
+        sourceExtensions: [".tsx"],
+        sourceCandidateCache
+      })
+    ).resolves.toBe("src/components/Button.ios.tsx");
+
+    await expect(
+      resolveSourceFileCandidate("src/components/Button", {
+        fs,
+        sourceExtensions: [".ts"],
+        sourceCandidateCache
+      })
+    ).resolves.toBe("src/components/Button.ts");
+
+    await expect(
+      resolveSourceFileCandidate("src/components/Button", {
+        fs,
+        sourceExtensions: [".tsx"],
+        sourceCandidateCache
+      })
+    ).resolves.toBe("src/components/Button.tsx");
+  });
+
+  it("keeps cached tsconfig misses flowing into later resolvers", async () => {
+    const onWarning = vi.fn();
+    const sourceCandidateCache = new Map<string, Promise<string | undefined>>();
+    const tsconfigPathsResolutionCache = new Map<string, Promise<ResolveResult>>();
+    const context = {
+      fs: createMemoryFileSystem(),
+      onWarning,
+      sourceCandidateCache,
+      tsconfigPathsResolutionCache,
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@shared": ["src/missing.ts"]
+        }
+      }
+    };
+
+    await expect(resolveImport("@shared", "src/app.ts", context, [tsconfigPathsResolver, packageExportsResolver])).resolves.toEqual({
+      type: "external"
+    });
+
+    await expect(resolveImport("@shared", "src/feature.ts", context, [tsconfigPathsResolver, packageExportsResolver])).resolves.toEqual({
+      type: "external"
+    });
+
+    expect(onWarning).not.toHaveBeenCalled();
   });
 });
 
