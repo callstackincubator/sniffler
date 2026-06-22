@@ -1,7 +1,11 @@
+import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import { createSniffler } from "../src/create-sniffler.js";
-import { runCli } from "../src/cli.js";
+import { isMainModule, runCli } from "../src/cli.js";
 
 const createFixtureFileSystem = (
   testMapTargets: ReadonlyArray<string> = ["src/feature.ts"],
@@ -82,6 +86,17 @@ const createPlatformFixtureFileSystem = () => {
 };
 
 describe("CLI impact command", () => {
+  it("treats a symlinked bin path as the main module", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sniffler-cli-"));
+    const targetPath = join(tempDir, "cli.js");
+    const symlinkPath = join(tempDir, "sniffler");
+
+    writeFileSync(targetPath, "export {};\n");
+    symlinkSync(targetPath, symlinkPath);
+
+    expect(isMainModule(pathToFileURL(targetPath).href, symlinkPath)).toBe(true);
+  });
+
   it("renders text output for positional changed files", async () => {
     const fs = createFixtureFileSystem();
     const output: string[] = [];
