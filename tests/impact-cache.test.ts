@@ -132,11 +132,12 @@ const buildCache = (
   options: {
     scan?: ScanResult;
     resolvedEdges?: ReadonlyArray<ResolvedEdge>;
+    platform?: string;
   } = {}
 ) => {
   return {
     version: 1,
-    configHash: getCacheConfigHash(fixtureConfig),
+    configHash: getCacheConfigHash(fixtureConfig, { platform: options.platform }),
     scannerVersion,
     files: {
       "src/app.ts": {
@@ -368,5 +369,119 @@ describe("impact cache", () => {
     expect(result.changedFiles).toEqual(["src/app.ts"]);
     expect(result.affectedModules).toEqual(["src/app.ts"]);
     expect(vi.mocked(scanFileText)).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps cache edges isolated by platform", async () => {
+    const androidHash = getCacheConfigHash(fixtureConfig, { platform: "android" });
+    const iosHash = getCacheConfigHash(fixtureConfig, { platform: "ios" });
+    const defaultHash = getCacheConfigHash(fixtureConfig);
+    const androidScanResult: ScanResult = {
+      imports: [
+        {
+          specifier: "./Button",
+          kind: "import",
+          entities: {
+            type: "all"
+          }
+        }
+      ],
+      exports: [],
+      warnings: []
+    };
+    const androidResolvedEdges: ReadonlyArray<ResolvedEdge> = [
+      {
+        from: "src/app.ts",
+        to: "src/Button.android.ts",
+        resolver: "relative",
+        entities: {
+          type: "all"
+        },
+        reExports: null
+      }
+    ];
+
+    expect(androidHash).not.toBe(defaultHash);
+    expect(iosHash).not.toBe(defaultHash);
+    expect(androidHash).not.toBe(iosHash);
+
+    const createPlatformCacheFixture = () =>
+      createMemoryFileSystem({
+        ".sniffler/config.json": JSON.stringify({
+          ...fixtureConfig,
+          tests: {
+            manifest: ".sniffler/test-map.json"
+          },
+          cache: {
+            path: ".sniffler/cache.json"
+          }
+        }),
+        ".sniffler/test-map.json": JSON.stringify({
+          tests: [
+            {
+              test: "e2e/app.spec.ts",
+              targets: ["src/app.ts"]
+            }
+          ]
+        }),
+        ".sniffler/cache.json": JSON.stringify({
+          version: 1,
+          configHash: androidHash,
+          scannerVersion: "scan-file-v1",
+          files: {
+            "src/app.ts": {
+              path: "src/app.ts",
+              contentHash: hashText('import "./Button";\nexport const app = 1;'),
+              scan: androidScanResult,
+              resolvedEdges: androidResolvedEdges
+            },
+            "src/Button.ts": {
+              path: "src/Button.ts",
+              contentHash: hashText("export const Button = true;"),
+              scan: emptyScanResult,
+              resolvedEdges: []
+            },
+            "src/Button.android.ts": {
+              path: "src/Button.android.ts",
+              contentHash: hashText("export const Button = true;"),
+              scan: emptyScanResult,
+              resolvedEdges: []
+            },
+            "src/Button.native.ts": {
+              path: "src/Button.native.ts",
+              contentHash: hashText("export const Button = true;"),
+              scan: emptyScanResult,
+              resolvedEdges: []
+            },
+            "src/Button.ios.ts": {
+              path: "src/Button.ios.ts",
+              contentHash: hashText("export const Button = true;"),
+              scan: emptyScanResult,
+              resolvedEdges: []
+            }
+          }
+        }),
+        "src/app.ts": 'import "./Button";\nexport const app = 1;',
+        "src/Button.ts": "export const Button = true;",
+        "src/Button.android.ts": "export const Button = true;",
+        "src/Button.native.ts": "export const Button = true;",
+        "src/Button.ios.ts": "export const Button = true;"
+      });
+
+    const defaultFs = createPlatformCacheFixture();
+    await selectImpact({ changedFiles: ["src/app.ts"] }, { fs: defaultFs, cwd: "." });
+    expect(vi.mocked(scanFileText)).toHaveBeenCalledTimes(5);
+    expect(vi.mocked(resolveImport)).toHaveBeenCalledTimes(1);
+
+    vi.clearAllMocks();
+    const androidFs = createPlatformCacheFixture();
+    await selectImpact({ changedFiles: ["src/app.ts"], platform: "android" }, { fs: androidFs, cwd: "." });
+    expect(vi.mocked(scanFileText)).not.toHaveBeenCalled();
+    expect(vi.mocked(resolveImport)).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    const iosFs = createPlatformCacheFixture();
+    await selectImpact({ changedFiles: ["src/app.ts"], platform: "ios" }, { fs: iosFs, cwd: "." });
+    expect(vi.mocked(scanFileText)).toHaveBeenCalledTimes(5);
+    expect(vi.mocked(resolveImport)).toHaveBeenCalledTimes(1);
   });
 });

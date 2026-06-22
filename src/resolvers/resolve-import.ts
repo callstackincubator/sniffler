@@ -27,6 +27,7 @@ export type ResolveContext = {
   workspacePackages?: ReadonlyArray<WorkspacePackage>;
   workspacePackagesByName?: ReadonlyMap<string, WorkspacePackage>;
   sourceExtensions?: ReadonlyArray<string>;
+  platform?: string;
   tsconfigPaths?: TsconfigPathsConfig;
   tsconfigPathsIndex?: CompiledTsconfigPathsConfig;
   conditions?: {
@@ -35,6 +36,13 @@ export type ResolveContext = {
   };
   importKind?: ResolveImportKind;
   resolutionCache?: Map<string, ResolveResult>;
+  onWarning?: (warning: {
+    resolver: string;
+    warning: string;
+    specifier: string;
+    fromFile: string;
+    importKind: ResolveImportKind;
+  }) => void;
 };
 
 export type ResolveResult =
@@ -89,9 +97,15 @@ export const compileTsconfigPathsConfig = (
 export const buildResolutionCacheKey = (
   specifier: string,
   fromFile: string,
-  importKind: ResolveImportKind
+  importKind: ResolveImportKind,
+  platform?: string
 ): string => {
-  return `${importKind}\u0000${fromFile}\u0000${specifier}`;
+  const normalizedPlatform = platform?.trim();
+  if (normalizedPlatform === undefined || normalizedPlatform.length === 0) {
+    return `${importKind}\u0000${fromFile}\u0000${specifier}`;
+  }
+
+  return `${importKind}\u0000${normalizedPlatform}\u0000${fromFile}\u0000${specifier}`;
 };
 
 export const resolveImport = async (
@@ -101,11 +115,18 @@ export const resolveImport = async (
   resolvers: ReadonlyArray<Resolver> = []
 ): Promise<ResolveResult> => {
   const importKind = context.importKind ?? "import";
-  const cacheKey = buildResolutionCacheKey(specifier, fromFile, importKind);
+  const cacheKey = buildResolutionCacheKey(specifier, fromFile, importKind, context.platform);
 
   if (context.resolutionCache?.has(cacheKey)) {
     return context.resolutionCache.get(cacheKey) as ResolveResult;
   }
+
+  let lastUsefulWarning:
+    | {
+        resolver: string;
+        warning: string;
+      }
+    | undefined;
 
   const bareSpecifier = !specifier.startsWith("./") && !specifier.startsWith("../") && !specifier.startsWith("/");
 
@@ -120,10 +141,36 @@ export const resolveImport = async (
 
   for (const resolver of resolvers) {
     const result = await resolver.resolve(specifier, fromFile, context);
-    if (result.type !== "unresolved") {
-      context.resolutionCache?.set(cacheKey, result);
-      return result;
+    if (result.type === "unresolved") {
+      if (!result.warning.startsWith("Not a ")) {
+        lastUsefulWarning = {
+          resolver: resolver.name,
+          warning: result.warning
+        };
+      }
+      continue;
     }
+
+    context.resolutionCache?.set(cacheKey, result);
+    return result;
+  }
+
+  if (lastUsefulWarning !== undefined) {
+    context.onWarning?.({
+      resolver: lastUsefulWarning.resolver,
+      warning: lastUsefulWarning.warning,
+      specifier,
+      fromFile,
+      importKind
+    });
+  } else {
+    context.onWarning?.({
+      resolver: "resolve-import",
+      warning: `Unable to resolve ${specifier} from ${fromFile}`,
+      specifier,
+      fromFile,
+      importKind
+    });
   }
 
   const result: ResolveResult = {

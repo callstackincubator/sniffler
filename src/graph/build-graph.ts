@@ -20,9 +20,20 @@ export type GraphNode = {
   resolvedEdges?: ReadonlyArray<ResolvedEdge>;
 };
 
+export type GraphWarning = {
+  source: "resolver";
+  kind: "import" | "export";
+  resolver: string;
+  file: string;
+  specifier: string;
+  importKind: "import" | "require";
+  message: string;
+};
+
 export type DependencyGraph = {
   nodes: ReadonlyArray<GraphNode>;
   edges: ReadonlyArray<ResolvedEdge>;
+  warnings: ReadonlyArray<GraphWarning>;
 };
 
 export type BuildGraphInput = {
@@ -69,6 +80,24 @@ export const buildGraph = async (
 
   const normalizedNodes = new Map<string, GraphNode>();
   const edges: ResolvedEdge[] = [];
+  const warnings: GraphWarning[] = [];
+
+  const createResolveContext = (kind: GraphWarning["kind"]): ResolveContext => {
+    return {
+      ...baseResolveContext,
+      onWarning: ({ resolver, warning, specifier, fromFile, importKind }) => {
+        warnings.push({
+          source: "resolver",
+          kind,
+          resolver,
+          file: fromFile,
+          specifier,
+          importKind,
+          message: warning
+        });
+      }
+    };
+  };
 
   for (const node of nodes) {
     const path = normalizePath(node.path);
@@ -94,7 +123,7 @@ export const buildGraph = async (
         dependency.specifier,
         node.path,
         {
-          ...baseResolveContext,
+          ...createResolveContext("import"),
           importKind: dependency.kind === "require" ? "require" : "import"
         },
         [
@@ -127,7 +156,7 @@ export const buildGraph = async (
         exported.specifier,
         node.path,
         {
-          ...baseResolveContext,
+          ...createResolveContext("export"),
           importKind: "import"
         },
         [
@@ -209,6 +238,7 @@ export const buildGraph = async (
 
   return {
     nodes: Array.from(normalizedNodes.values()).sort((left, right) => left.path.localeCompare(right.path)),
-    edges: sortedEdges
+    edges: sortedEdges,
+    warnings
   };
 };

@@ -65,6 +65,7 @@ const impactHelpText = [
   "  --head <ref>      Git head ref for changed-file discovery",
   "  --diagnostics     Write local timing diagnostics to .sniffler/diagnostics.json",
   "  --format <text|json>  Override the configured output format",
+  "  --platform <name> Use platform-aware file resolution",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
 
@@ -80,6 +81,7 @@ const runHelpText = [
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
   "  --diagnostics     Write local timing diagnostics to .sniffler/diagnostics.json",
+  "  --platform <name> Use platform-aware file resolution",
   "  --config <path>   Path to .sniffler/config.json"
 ].join("\n");
 
@@ -107,8 +109,8 @@ type ParsedSelectionOptions = Record<string, unknown> & {
   "--"?: ReadonlyArray<string>;
 };
 
-const allowedImpactOptionKeys = new Set(["base", "head", "format", "config", "diagnostics"]);
-const allowedRunOptionKeys = new Set(["base", "head", "config", "diagnostics"]);
+const allowedImpactOptionKeys = new Set(["base", "head", "format", "config", "diagnostics", "platform"]);
+const allowedRunOptionKeys = new Set(["base", "head", "config", "diagnostics", "platform"]);
 
 const toFlagName = (key: string): string => {
   return `--${key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
@@ -151,6 +153,11 @@ const parseStringOption = (
   }
 
   return { value };
+};
+
+const normalizeOptionalString = (value?: string): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
 const normalizeLegacyChangedArgs = (
@@ -231,6 +238,12 @@ const buildImpactInput = (
     return { type: "error", message: "--format must be either text or json" };
   }
 
+  const platform = parseStringOption(options, "platform");
+
+  if (platform.error !== undefined) {
+    return { type: "error", message: platform.error };
+  }
+
   const hasFiles = files.length > 0;
   const hasBase = base.value !== undefined;
   const hasHead = head.value !== undefined;
@@ -262,6 +275,12 @@ const buildImpactInput = (
 
   if (format.value !== undefined) {
     input.format = format.value;
+  }
+
+  const normalizedPlatform = normalizeOptionalString(platform.value);
+
+  if (normalizedPlatform !== undefined) {
+    input.platform = normalizedPlatform;
   }
 
   return { type: "input", input };
@@ -323,6 +342,7 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
     .option("--head <ref>", "Git head ref for changed-file discovery")
     .option("--diagnostics", "Write local timing diagnostics to .sniffler/diagnostics.json")
     .option("--format <format>", "Override configured output format")
+    .option("--platform <name>", "Use platform-aware file resolution")
     .option("--config <path>", "Path to .sniffler/config.json")
     .action(async (files: ReadonlyArray<string> = [], options: ParsedSelectionOptions) => {
       const parsed = buildImpactInput(files, options);
@@ -372,6 +392,7 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
     .option("--base <ref>", "Git base ref for changed-file discovery")
     .option("--head <ref>", "Git head ref for changed-file discovery")
     .option("--diagnostics", "Write local timing diagnostics to .sniffler/diagnostics.json")
+    .option("--platform <name>", "Use platform-aware file resolution")
     .option("--config <path>", "Path to .sniffler/config.json")
     .allowUnknownOptions()
     .action(async (files: ReadonlyArray<string> = [], options: ParsedSelectionOptions) => {

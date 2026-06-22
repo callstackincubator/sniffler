@@ -8,8 +8,11 @@ const createFixtureFileSystem = (
   options: {
     extraEntries?: Record<string, string>;
     config?: Record<string, unknown>;
+    includeScannerWarning?: boolean;
   } = {}
 ) => {
+  const includeScannerWarning = options.includeScannerWarning === true;
+
   return createMemoryFileSystem({
     ".sniffler/config.json": JSON.stringify({
       output: {
@@ -28,12 +31,53 @@ const createFixtureFileSystem = (
         }
       ]
     }),
-    "src/feature.ts": [
-      'import "./shared.ts";',
-      "export const feature = true;"
-    ].join("\n"),
+    "src/feature.ts": includeScannerWarning
+      ? [
+          "const path = getPath();",
+          "await import(path);",
+          'import "./shared.ts";',
+          "export const feature = true;"
+        ].join("\n")
+      : [
+          'import "./shared.ts";',
+          "export const feature = true;"
+        ].join("\n"),
     "src/shared.ts": "export const shared = true;",
     ...(options.extraEntries ?? {})
+  });
+};
+
+const createPlatformFixtureFileSystem = () => {
+  return createMemoryFileSystem({
+    ".sniffler/config.json": JSON.stringify({
+      output: {
+        format: "text"
+      },
+      source: {
+        roots: ["src"],
+        extensions: [".ts"],
+        ignore: []
+      },
+      tests: {
+        manifest: ".sniffler/test-map.json"
+      }
+    }),
+    ".sniffler/test-map.json": JSON.stringify({
+      tests: [
+        {
+          test: "e2e/app.spec.ts",
+          targets: ["src/app.ts"]
+        }
+      ]
+    }),
+    "src/app.ts": [
+      'import "./Button";',
+      "export const app = true;"
+    ].join("\n"),
+    "src/Button.ts": "export const Button = true;",
+    "src/Button.android.ts": "export const Button = true;",
+    "src/Button.native.ts": "export const Button = true;",
+    "src/Button.ios.ts": "export const Button = true;"
   });
 };
 
@@ -80,7 +124,7 @@ describe("CLI impact command", () => {
   });
 
   it("writes diagnostics when enabled", async () => {
-    const fs = createFixtureFileSystem();
+    const fs = createFixtureFileSystem(["src/feature.ts"], { includeScannerWarning: true });
     const output: string[] = [];
 
     const result = await runCli(
@@ -105,11 +149,34 @@ describe("CLI impact command", () => {
       version: number;
       status: string;
       stages: Array<{ name: string; durationMs: number }>;
+      warnings: Array<{
+        source: string;
+        resolver?: string;
+        type?: string;
+        kind?: string;
+        message: string;
+        file: string;
+        specifier?: string;
+        importKind?: string;
+        location?: { line: number; column: number };
+      }>;
       metrics: Record<string, number | string | boolean>;
     }>(".sniffler/diagnostics.json");
     expect(diagnostics).toMatchObject({
       version: 1,
       status: "success",
+      warnings: [
+        {
+          source: "scanner",
+          type: "unresolved-dynamic-import",
+          file: "src/feature.ts",
+          message: "src/feature.ts:2 dynamic import target is not statically resolvable",
+          location: {
+            line: 2,
+            column: 14
+          }
+        }
+      ],
       metrics: {
         sourceFiles: 2,
         cacheEntries: 0,
@@ -120,7 +187,7 @@ describe("CLI impact command", () => {
         changedFiles: 1,
         affectedModules: 2,
         recommendedTests: 1,
-        warnings: 0
+        warnings: 1
       }
     });
 
@@ -300,6 +367,28 @@ describe("CLI impact command", () => {
     });
   });
 
+  it("accepts platform-aware impact resolution", async () => {
+    const fs = createPlatformFixtureFileSystem();
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--platform", "android", "src/Button.android.ts"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("e2e/app.spec.ts");
+    expect(output.join("")).toContain("src/Button.android.ts -> src/app.ts");
+  });
+
   it("rejects no selection", async () => {
     const fs = createFixtureFileSystem();
     const stdout: string[] = [];
@@ -473,6 +562,33 @@ describe("CLI run command", () => {
     expect(runner).toHaveBeenCalledWith({
       command: "pnpm",
       args: ["vitest", "run", "e2e/feature.spec.ts"],
+      cwd: expect.any(String)
+    });
+    expect(output).toEqual([]);
+  });
+
+  it("accepts platform-aware run resolution", async () => {
+    const fs = createPlatformFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["run", "--platform", "android", "src/Button.android.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).toHaveBeenCalledWith({
+      command: "pnpm",
+      args: ["vitest", "run", "e2e/app.spec.ts"],
       cwd: expect.any(String)
     });
     expect(output).toEqual([]);

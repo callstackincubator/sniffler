@@ -50,6 +50,7 @@ const createDiagnostics = (): Diagnostics & { metrics: Map<string, number | stri
       const current = metrics.get(name);
       metrics.set(name, typeof current === "number" ? current + amount : amount);
     },
+    warning: () => {},
     flush: async () => {}
   };
 };

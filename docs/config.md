@@ -27,6 +27,13 @@ sniffler impact --base origin/main --head HEAD
 sniffler run --base origin/main --head HEAD -- pnpm vitest run
 ```
 
+For React Native projects, pass `--platform <name>` when you want extensionless imports to prefer platform-specific source files at runtime:
+
+```bash
+sniffler impact --platform android --base origin/main --head HEAD
+sniffler run --platform android --base origin/main --head HEAD -- pnpm vitest run
+```
+
 If your config is elsewhere, pass it explicitly:
 
 ```bash
@@ -103,6 +110,8 @@ type SnifflerConfig = {
 ```
 
 The config file may also include a string `$schema` property.
+
+`platform` is intentionally not a config property. It is a runtime option passed to `sniffler impact` or `sniffler run`, so the same project config can be reused for `android`, `ios`, web, or default resolution runs.
 
 ## Properties
 

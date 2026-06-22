@@ -31,6 +31,23 @@ const toCacheConfigInput = (config: SnifflerConfig): Record<string, unknown> => 
   };
 };
 
-export const getCacheConfigHash = (config: SnifflerConfig): string => {
-  return hashValue(JSON.stringify(toCacheConfigInput(config)));
+export const getCacheConfigHash = (
+  config: SnifflerConfig,
+  runtime?: {
+    platform?: string;
+  }
+): string => {
+  const platform = runtime?.platform?.trim();
+  const configInput = toCacheConfigInput(config);
+
+  if (platform === undefined || platform.length === 0) {
+    return hashValue(JSON.stringify(configInput));
+  }
+
+  return hashValue(
+    JSON.stringify({
+      ...configInput,
+      platform
+    })
+  );
 };
