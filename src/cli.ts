@@ -2,7 +2,8 @@
 
 import cac from "cac";
 import packageJson from "../package.json" with { type: "json" };
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createDiagnostics, noopDiagnostics } from "./diagnostics/diagnostics.js";
 import { createNodeFileSystem } from "./filesystem/node-filesystem.js";
 import type { ImpactCommandInput } from "./impact/impact-command.js";
@@ -497,9 +498,22 @@ export const runCli = async (
   }
 };
 
-const isMainModule = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+export const isMainModule = (
+  moduleUrl: string = import.meta.url,
+  argvPath: string | undefined = process.argv[1]
+): boolean => {
+  if (argvPath === undefined) {
+    return false;
+  }
 
-if (isMainModule) {
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
+};
+
+if (isMainModule()) {
   const result = await runCli(process.argv.slice(2));
   process.exitCode = result.exitCode;
 }
