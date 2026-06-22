@@ -16,8 +16,22 @@ const resolveRelativeCandidate = async (
 ): Promise<string | undefined> => {
   return resolveSourceFileCandidate(resolveRelativePath(specifier, fromFile), {
     fs: context.fs,
-    sourceExtensions: context.sourceExtensions
+    sourceExtensions: context.sourceExtensions,
+    platform: context.platform
   });
+};
+
+const hasSourceExtension = (specifier: string, sourceExtensions?: ReadonlyArray<string>): boolean => {
+  const extensions = sourceExtensions ?? [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+  return extensions.some((extension) => specifier.endsWith(extension));
+};
+
+const shouldProbeCandidate = (specifier: string, context: ResolveContext): boolean => {
+  if (extname(specifier) === "" || hasSourceExtension(specifier, context.sourceExtensions)) {
+    return true;
+  }
+
+  return (context.platform?.trim() ?? "") !== "";
 };
 
 export const relativeResolver: Resolver = {
@@ -27,7 +41,7 @@ export const relativeResolver: Resolver = {
       return { type: "unresolved", warning: "Not a relative specifier" };
     }
 
-    if (extname(specifier) !== "") {
+    if (!shouldProbeCandidate(specifier, context)) {
       return {
         type: "resolved",
         path: resolveRelativePath(specifier, fromFile),
@@ -36,6 +50,14 @@ export const relativeResolver: Resolver = {
     }
 
     const resolvedPath = await resolveRelativeCandidate(specifier, fromFile, context);
+
+    if (resolvedPath === undefined && extname(specifier) !== "") {
+      return {
+        type: "resolved",
+        path: resolveRelativePath(specifier, fromFile),
+        resolver: "relative"
+      };
+    }
 
     if (resolvedPath === undefined) {
       return {

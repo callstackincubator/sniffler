@@ -17,7 +17,8 @@ const isRelativeOrAbsolute = (specifier: string): boolean => {
 const resolveCandidate = async (candidate: string, context: ResolveContext): Promise<string | undefined> => {
   return resolveSourceFileCandidate(candidate, {
     fs: context.fs,
-    sourceExtensions: context.sourceExtensions
+    sourceExtensions: context.sourceExtensions,
+    platform: context.platform
   });
 };
 

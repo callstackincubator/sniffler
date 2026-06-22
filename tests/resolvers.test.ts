@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import { resolveImport } from "../src/resolvers/resolve-import.js";
+import { relativeResolver } from "../src/resolvers/relative-resolver.js";
 import { tsconfigPathsResolver } from "../src/resolvers/tsconfig-paths-resolver.js";
 import { workspacePackageResolver } from "../src/resolvers/workspace-package-resolver.js";
 
@@ -196,6 +197,168 @@ describe("tsconfigPathsResolver", () => {
     ).resolves.toEqual({
       type: "resolved",
       path: "src/specific/Button.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
+});
+
+describe("relativeResolver", () => {
+  it("keeps existing behavior when platform missing", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.ts": "export const Button = true;",
+      "src/components/Button.native.ts": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.ts",
+      resolver: "relative"
+    });
+  });
+
+  it("follows android, native, generic order per source extension", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.native.ts": "export const Button = true;",
+      "src/components/Button.android.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.native.ts",
+      resolver: "relative"
+    });
+  });
+
+  it("falls back to generic source files when platform files are missing", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.tsx",
+      resolver: "relative"
+    });
+  });
+
+  it("does not pick other platform files implicitly", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.ios.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "unresolved",
+      warning: "No source file matched ./components/Button"
+    });
+  });
+
+  it("keeps explicit source-extension imports exact", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.ios.tsx": "export const Button = true;",
+      "src/components/Button.android.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./components/Button.ios.tsx", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.ios.tsx",
+      resolver: "relative"
+    });
+  });
+
+  it("treats platform-like suffixes as candidate prefixes", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.ios.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"]
+    };
+
+    await expect(relativeResolver.resolve("./components/Button.ios", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.ios.tsx",
+      resolver: "relative"
+    });
+  });
+});
+
+describe("tsconfigPathsResolver platform probing", () => {
+  it("applies platform probing after alias expansion", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.native.ts": "export const Button = true;",
+      "src/components/Button.android.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"],
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@components/*": ["src/components/*"]
+        }
+      }
+    };
+
+    await expect(tsconfigPathsResolver.resolve("@components/Button", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.native.ts",
+      resolver: "tsconfig-paths"
+    });
+  });
+
+  it("treats aliased platform-like suffixes as candidate prefixes", async () => {
+    const fs = createMemoryFileSystem({
+      "src/components/Button.ios.tsx": "export const Button = true;"
+    });
+
+    const context = {
+      fs,
+      platform: "android",
+      sourceExtensions: [".ts", ".tsx"],
+      tsconfigPaths: {
+        baseUrl: ".",
+        paths: {
+          "@components/*": ["src/components/*"]
+        }
+      }
+    };
+
+    await expect(tsconfigPathsResolver.resolve("@components/Button.ios", "src/app.ts", context)).resolves.toEqual({
+      type: "resolved",
+      path: "src/components/Button.ios.tsx",
       resolver: "tsconfig-paths"
     });
   });

@@ -59,6 +59,17 @@ Sniffler probes candidate source files in this order:
 
 The configured source extensions come from `source.extensions` in `.sniffler/config.json`. Sniffler does not broaden the graph to extensions it does not scan.
 
+When `--platform <name>` is passed, source-file probing follows Metro-style platform priority for extensionless relative imports and TSConfig path aliases. Platform names are unrestricted strings. For `--platform android` and source extensions `[".ts", ".tsx"]`, `./Button` probes:
+
+1. `Button.android.ts`
+2. `Button.native.ts`
+3. `Button.ts`
+4. `Button.android.tsx`
+5. `Button.native.tsx`
+6. `Button.tsx`
+
+Directory indexes use the same order, such as `Button/index.android.ts`, `Button/index.native.ts`, and `Button/index.ts`. Other platform files, such as `Button.ios.tsx`, are not selected implicitly during an `android` run. Exact imports still resolve the named path when it exists, so `./Button.ios.tsx` can resolve during an `android` run. An import such as `./Button.ios` is treated as a candidate prefix and then uses the normal platform probing rules.
+
 ### Workspace Package Exports
 
 Workspace package exports resolve imports that target a discovered local workspace package with a `package.json#exports` map.
@@ -66,6 +77,8 @@ Workspace package exports resolve imports that target a discovered local workspa
 Sniffler supports string exports, exact subpath exports, wildcard subpath exports, and conditional export objects. Conditions are chosen from the Sniffler resolver config, with separate condition lists for `import` and `require`.
 
 Only workspace packages are resolved this way. Third-party packages are external to the graph.
+
+Package export targets are resolved as declared by the package. Platform and source-extension probing are not applied to package export targets.
 
 ### Workspace Package Names
 
@@ -80,6 +93,7 @@ Resolvers receive context collected before graph construction:
 - Filesystem access through Sniffler's filesystem abstraction.
 - Discovered workspace package metadata.
 - Configured source extensions for source-file probing.
+- Optional runtime platform for Metro-style source-file probing.
 - TSConfig paths and base URL.
 - Resolver conditions for `import` and `require`.
 - The import kind currently being resolved.
