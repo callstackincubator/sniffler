@@ -127,6 +127,18 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
         `Invalid config in ${path}: source.ignore must be an array of strings.`
       );
     }
+
+    if (
+      "includeNodeModules" in value.source &&
+      value.source.includeNodeModules !== undefined &&
+      typeof value.source.includeNodeModules !== "boolean"
+    ) {
+      throw createLoadError(
+        "SNIFFLER_INVALID_CONFIG",
+        path,
+        `Invalid config in ${path}: source.includeNodeModules must be a boolean.`
+      );
+    }
   }
 
   if ("workspaces" in value && value.workspaces !== undefined) {
@@ -273,7 +285,8 @@ const normalizeConfig = (config: SnifflerConfigFile): SnifflerConfig => {
     source: {
       roots: config.source?.roots ?? defaultConfig.source?.roots,
       extensions: config.source?.extensions ?? defaultConfig.source?.extensions,
-      ignore: config.source?.ignore ?? defaultConfig.source?.ignore
+      ignore: config.source?.ignore ?? defaultConfig.source?.ignore,
+      includeNodeModules: config.source?.includeNodeModules ?? defaultConfig.source?.includeNodeModules
     },
     workspaces: {
       strategies: config.workspaces?.strategies ?? defaultConfig.workspaces?.strategies

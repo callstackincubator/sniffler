@@ -1,12 +1,13 @@
-import { access, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import fg from "fast-glob";
+import { access, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import {
   createInvalidJsonError,
   type FileSystem,
   type FileStat,
   type GlobOptions
 } from "./filesystem.js";
-import { createGlobMatcher, normalizePath } from "./path-utils.js";
+import { normalizePath } from "./path-utils.js";
 
 const toFileStat = (fileStat: { isFile: () => boolean; isDirectory: () => boolean; size: number; mtimeMs: number }): FileStat => {
   return {
@@ -22,24 +23,21 @@ export const createNodeFileSystem = (): FileSystem => {
     return readFile(path, "utf8");
   };
 
-  const walkFiles = async (root: string): Promise<Array<string>> => {
-    const entries = await readdir(root, { withFileTypes: true });
-    const files: string[] = [];
+  const buildPruneIgnorePatterns = (pruneDirectories: ReadonlyArray<string>): Array<string> => {
+    const patterns = new Set<string>();
 
-    for (const entry of entries) {
-      const fullPath = join(root, entry.name);
+    for (const directory of pruneDirectories) {
+      const normalizedDirectory = normalizePath(directory).replace(/^\.\/+/, "");
 
-      if (entry.isDirectory()) {
-        files.push(...(await walkFiles(fullPath)));
+      if (normalizedDirectory.length === 0) {
         continue;
       }
 
-      if (entry.isFile()) {
-        files.push(fullPath);
-      }
+      patterns.add(`**/${normalizedDirectory}/**`);
+      patterns.add(`${normalizedDirectory}/**`);
     }
 
-    return files;
+    return [...patterns];
   };
 
   return {
@@ -66,15 +64,16 @@ export const createNodeFileSystem = (): FileSystem => {
     },
     glob: async (patterns: ReadonlyArray<string>, options: GlobOptions) => {
       const cwd = resolve(options.cwd ?? ".");
-      const matchers = patterns.map((pattern) => createGlobMatcher(pattern));
+      const pruneDirectories = options.pruneDirectories ?? [];
+      const entries = await fg.async([...patterns], {
+        cwd,
+        dot: options.dot === true,
+        followSymbolicLinks: false,
+        ignore: [...(options.ignore ?? []), ...buildPruneIgnorePatterns(pruneDirectories)],
+        onlyFiles: true
+      });
 
-      return (await walkFiles(cwd))
-        .map((path) => relative(cwd, path))
-        .map((path) => normalizePath(path))
-        .filter((path) => path.length > 0)
-        .filter((path) => (options.dot === true ? true : !path.split("/").some((segment) => segment.startsWith("."))))
-        .filter((path) => matchers.some((matcher) => matcher(path)))
-        .sort((left, right) => left.localeCompare(right));
+      return entries.map((path) => normalizePath(path)).sort((left, right) => left.localeCompare(right));
     },
     stat: async (path: string) => toFileStat(await stat(path)),
     writeFile: async (path: string, content: string) => {

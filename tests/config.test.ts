@@ -19,6 +19,7 @@ describe("loadConfig", () => {
     expect(result.config.tests?.manifest).toBe("custom/test-map.json");
     expect(result.config.output?.format).toBe("text");
     expect(result.config.cache?.stale).toBe("content");
+    expect(result.config.source?.includeNodeModules).toBe(false);
   });
 
   it("loads the configured cache stale strategy", async () => {
@@ -98,6 +99,22 @@ describe("loadConfig", () => {
       code: "SNIFFLER_INVALID_CONFIG",
       path: defaultConfigPath,
       message: expect.stringContaining('cache.stale must be "content" or "metadata"')
+    });
+  });
+
+  it("fails with an actionable error when source.includeNodeModules is invalid", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        source: {
+          includeNodeModules: "yes please"
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining("source.includeNodeModules must be a boolean")
     });
   });
 });

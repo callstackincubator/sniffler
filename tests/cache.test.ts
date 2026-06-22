@@ -4,6 +4,7 @@ import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import { loadCache } from "../src/cache/load-cache.js";
 import { saveCache } from "../src/cache/save-cache.js";
 import type { GraphCache } from "../src/cache/cache-types.js";
+import { getCacheConfigHash } from "../src/cache/cache-key.js";
 
 const validCache: GraphCache = {
   version: 1,
@@ -38,6 +39,44 @@ const validCache: GraphCache = {
 };
 
 describe("cache", () => {
+  it("changes the config hash when source.includeNodeModules changes", () => {
+    const sharedConfig = {
+      source: {
+        roots: ["src"],
+        extensions: [".ts"],
+        ignore: []
+      },
+      workspaces: {
+        strategies: []
+      },
+      resolver: {
+        tsconfig: "tsconfig.json",
+        conditions: {
+          import: ["import", "node", "default"],
+          require: ["require", "node", "default"]
+        }
+      }
+    };
+
+    expect(
+      getCacheConfigHash({
+        ...sharedConfig,
+        source: {
+          ...sharedConfig.source,
+          includeNodeModules: false
+        }
+      })
+    ).not.toBe(
+      getCacheConfigHash({
+        ...sharedConfig,
+        source: {
+          ...sharedConfig.source,
+          includeNodeModules: true
+        }
+      })
+    );
+  });
+
   it("loads a valid cache when the expected hashes match", async () => {
     const fs = createMemoryFileSystem({
       ".sniffler/cache.json": JSON.stringify(validCache)

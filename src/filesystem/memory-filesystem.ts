@@ -1,15 +1,15 @@
+import { createRequire } from "node:module";
 import {
   createInvalidJsonError,
   type FileStat,
   type FileSystem,
   type GlobOptions
 } from "./filesystem.js";
-import {
-  createGlobMatcher,
-  isPathWithinDirectory,
-  normalizePath,
-  parentDirectories
-} from "./path-utils.js";
+import { isPathWithinDirectory, normalizePath, parentDirectories } from "./path-utils.js";
+
+type Picomatch = (pattern: string, options?: { dot?: boolean }) => (path: string) => boolean;
+
+const picomatch = createRequire(import.meta.url)("picomatch") as Picomatch;
 
 type MemoryEntry = {
   content: string;
@@ -30,6 +30,10 @@ const defaultStat = (kind: MemoryEntry["kind"], content: string): FileStat => {
     size: content.length,
     mtimeMs: 0
   };
+};
+
+const createMatcher = (pattern: string, dot: boolean): ((path: string) => boolean) => {
+  return picomatch(normalizePath(pattern), { dot });
 };
 
 export type MemoryFileSystem = FileSystem & {
@@ -108,15 +112,21 @@ export const createMemoryFileSystem = (entries: Record<string, string> = {}): Me
     exists: async (path: string) => getEntry(path) !== undefined,
     glob: async (patterns: ReadonlyArray<string>, options: GlobOptions) => {
       const cwd = normalizePath(options.cwd ?? ".");
-      const matchers = patterns.map((pattern) => createGlobMatcher(pattern));
+      const pruneDirectories = options.pruneDirectories ?? [];
+      const ignorePatterns = options.ignore ?? [];
+      const dot = options.dot === true;
+      const matchers = patterns.map((pattern) => createMatcher(pattern, dot));
+      const ignoreMatchers = ignorePatterns.map((pattern) => createMatcher(pattern, dot));
 
       return Array.from(files.entries())
         .filter(([, entry]) => entry.kind === "file")
         .map(([path]) => normalizePath(path))
         .map((path) => (cwd === "." ? path : path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : ""))
         .filter((path) => path.length > 0)
-        .filter((path) => (options.dot === true ? true : !path.split("/").some((segment) => segment.startsWith("."))))
+        .filter((path) => (dot ? true : !path.split("/").some((segment) => segment.startsWith("."))))
+        .filter((path) => !pruneDirectories.some((directory) => path.split("/").includes(directory)))
         .filter((path) => matchers.some((matcher) => matcher(path)))
+        .filter((path) => !ignoreMatchers.some((matcher) => matcher(path)))
         .sort((left, right) => left.localeCompare(right));
     },
     stat: async (path: string) => {

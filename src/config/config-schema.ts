@@ -3,6 +3,7 @@ export type SnifflerConfig = {
     roots?: ReadonlyArray<string>;
     extensions?: ReadonlyArray<string>;
     ignore?: ReadonlyArray<string>;
+    includeNodeModules?: boolean;
   };
   workspaces?: {
     strategies?: ReadonlyArray<"package-json" | "pnpm-workspace">;
@@ -36,7 +37,8 @@ export const defaultConfig = {
   source: {
     roots: ["."],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
-    ignore: []
+    ignore: [],
+    includeNodeModules: false
   },
   workspaces: {
     strategies: ["package-json", "pnpm-workspace"]

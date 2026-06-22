@@ -8,6 +8,8 @@ export type FileStat = {
 export type GlobOptions = {
   cwd?: string;
   dot?: boolean;
+  ignore?: ReadonlyArray<string>;
+  pruneDirectories?: ReadonlyArray<string>;
 };
 
 export type SnifflerInvalidJsonError = Error & {
