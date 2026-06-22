@@ -199,6 +199,20 @@ describe("CLI impact command", () => {
         cacheScanMisses: 2,
         cachedResolvedEdgeFiles: 0,
         graphNodes: 2,
+        graphResolvedEdgesFromCache: 0,
+        graphImportSpecifiers: 1,
+        graphImportResolved: 1,
+        graphImportExternal: 0,
+        graphImportUnresolved: 0,
+        graphExportSpecifiers: 0,
+        graphExportResolved: 0,
+        graphExportExternal: 0,
+        graphExportUnresolved: 0,
+        graphResolvedEdgesCreated: 1,
+        graphEdgesSorted: 1,
+        graphResolutionCacheMisses: 1,
+        "graphResolver.relative.attempts": 1,
+        "graphResolver.relative.resolved": 1,
         changedFiles: 1,
         affectedModules: 2,
         recommendedTests: 1,
@@ -216,6 +230,10 @@ describe("CLI impact command", () => {
         "impact.sources.discover",
         "impact.sources.scan",
         "impact.graph.build",
+        "impact.graph.nodes.normalize",
+        "impact.graph.resolve.imports",
+        "impact.graph.resolve.exports",
+        "impact.graph.edges.sort",
         "impact.traverse",
         "impact.testMap.load",
         "impact.tests.match"
@@ -880,7 +898,7 @@ describe("CLI help", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(stdout.join("")).toContain("0.0.0");
+    expect(stdout.join("")).toContain("0.1.0");
     expect(stderr).toEqual([]);
   });
 });

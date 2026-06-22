@@ -1,5 +1,8 @@
+import { performance } from "node:perf_hooks";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { builtinModules } from "node:module";
+import { normalizePath } from "../filesystem/path-utils.js";
+import type { Diagnostics } from "../diagnostics/diagnostics.js";
 import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
 
 export type TsconfigPathsMapping = Record<string, ReadonlyArray<string>>;
@@ -24,12 +27,15 @@ export type CompiledTsconfigPathsConfig = {
 
 export type ResolveContext = {
   fs: FileSystem;
+  diagnostics?: Diagnostics;
   workspacePackages?: ReadonlyArray<WorkspacePackage>;
   workspacePackagesByName?: ReadonlyMap<string, WorkspacePackage>;
   sourceExtensions?: ReadonlyArray<string>;
   platform?: string;
+  sourceCandidateCache?: Map<string, Promise<string | undefined>>;
   tsconfigPaths?: TsconfigPathsConfig;
   tsconfigPathsIndex?: CompiledTsconfigPathsConfig;
+  tsconfigPathsResolutionCache?: Map<string, Promise<ResolveResult>>;
   conditions?: {
     import?: ReadonlyArray<string>;
     require?: ReadonlyArray<string>;
@@ -108,6 +114,39 @@ export const buildResolutionCacheKey = (
   return `${importKind}\u0000${normalizedPlatform}\u0000${fromFile}\u0000${specifier}`;
 };
 
+export const buildSourceCandidateCacheKey = (
+  candidate: string,
+  sourceExtensions: ReadonlyArray<string>,
+  platform?: string
+): string => {
+  const normalizedPlatform = platform?.trim() ?? "";
+  return `${normalizePath(candidate)}\u0000${sourceExtensions.join("\u0001")}\u0000${normalizedPlatform}`;
+};
+
+const getResolverMetricNamespace = (resolverName: string): string => {
+  switch (resolverName) {
+    case "relative":
+      return "relative";
+    case "tsconfig-paths":
+      return "tsconfigPaths";
+    case "package-exports":
+      return "packageExports";
+    case "workspace-package":
+      return "workspacePackage";
+    default:
+      return "other";
+  }
+};
+
+const recordResolverMetric = (
+  diagnostics: Diagnostics | undefined,
+  resolverName: string,
+  suffix: "attempts" | "durationMs" | "resolved" | "external" | "unresolved",
+  amount = 1
+): void => {
+  diagnostics?.increment(`graphResolver.${getResolverMetricNamespace(resolverName)}.${suffix}`, amount);
+};
+
 export const resolveImport = async (
   specifier: string,
   fromFile: string,
@@ -116,10 +155,14 @@ export const resolveImport = async (
 ): Promise<ResolveResult> => {
   const importKind = context.importKind ?? "import";
   const cacheKey = buildResolutionCacheKey(specifier, fromFile, importKind, context.platform);
+  const diagnostics = context.diagnostics;
 
   if (context.resolutionCache?.has(cacheKey)) {
+    diagnostics?.increment("graphResolutionCacheHits");
     return context.resolutionCache.get(cacheKey) as ResolveResult;
   }
+
+  diagnostics?.increment("graphResolutionCacheMisses");
 
   let lastUsefulWarning:
     | {
@@ -136,12 +179,21 @@ export const resolveImport = async (
   ) {
     const result: ResolveResult = { type: "external" };
     context.resolutionCache?.set(cacheKey, result);
+    diagnostics?.increment("graphResolverBuiltinExternal");
     return result;
   }
 
   for (const resolver of resolvers) {
-    const result = await resolver.resolve(specifier, fromFile, context);
+    const resolverStartedAt = performance.now();
+    recordResolverMetric(diagnostics, resolver.name, "attempts");
+    const result = await Promise.resolve()
+      .then(() => resolver.resolve(specifier, fromFile, context))
+      .finally(() => {
+        recordResolverMetric(diagnostics, resolver.name, "durationMs", performance.now() - resolverStartedAt);
+      });
+
     if (result.type === "unresolved") {
+      recordResolverMetric(diagnostics, resolver.name, "unresolved");
       if (!result.warning.startsWith("Not a ")) {
         lastUsefulWarning = {
           resolver: resolver.name,
@@ -151,6 +203,7 @@ export const resolveImport = async (
       continue;
     }
 
+    recordResolverMetric(diagnostics, resolver.name, result.type);
     context.resolutionCache?.set(cacheKey, result);
     return result;
   }

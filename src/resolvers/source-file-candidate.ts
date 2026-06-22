@@ -1,7 +1,8 @@
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { normalizePath } from "../filesystem/path-utils.js";
+import { buildSourceCandidateCacheKey } from "./resolve-import.js";
 
-const defaultSourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
+export const defaultSourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
 
 const statIfFile = async (fs: FileSystem, path: string): Promise<boolean> => {
   try {
@@ -69,7 +70,7 @@ const probeIndexExtensions = async (
   return undefined;
 };
 
-export const resolveSourceFileCandidate = async (
+const resolveSourceFileCandidateUncached = async (
   candidate: string,
   context: {
     fs: FileSystem;
@@ -110,4 +111,30 @@ export const resolveSourceFileCandidate = async (
   }
 
   return undefined;
+};
+
+export const resolveSourceFileCandidate = async (
+  candidate: string,
+  context: {
+    fs: FileSystem;
+    sourceExtensions?: ReadonlyArray<string>;
+    platform?: string;
+    sourceCandidateCache?: Map<string, Promise<string | undefined>>;
+  }
+): Promise<string | undefined> => {
+  const sourceExtensions = context.sourceExtensions ?? defaultSourceExtensions;
+  const cacheKey = buildSourceCandidateCacheKey(candidate, sourceExtensions, context.platform);
+  const cachedResult = context.sourceCandidateCache?.get(cacheKey);
+  if (cachedResult !== undefined) {
+    return cachedResult;
+  }
+
+  const resolvedResult = resolveSourceFileCandidateUncached(candidate, context).catch((error: unknown) => {
+    context.sourceCandidateCache?.delete(cacheKey);
+    throw error;
+  });
+
+  context.sourceCandidateCache?.set(cacheKey, resolvedResult);
+
+  return resolvedResult;
 };
