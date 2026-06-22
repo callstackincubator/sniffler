@@ -50,7 +50,8 @@ Every property is optional. Missing properties are filled from the defaults belo
   "source": {
     "roots": ["."],
     "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
-    "ignore": []
+    "ignore": [],
+    "includeNodeModules": false
   },
   "workspaces": {
     "strategies": ["package-json", "pnpm-workspace"]
@@ -83,6 +84,7 @@ type SnifflerConfig = {
     roots?: string[];
     extensions?: string[];
     ignore?: string[];
+    includeNodeModules?: boolean;
   };
   workspaces?: {
     strategies?: Array<"package-json" | "pnpm-workspace">;
@@ -176,6 +178,28 @@ Use this to keep test files, generated files, fixtures, or build outputs out of 
   }
 }
 ```
+
+### `source.includeNodeModules`
+
+Whether Sniffler may crawl into and include `node_modules` directories during source discovery.
+
+Default:
+
+```json
+false
+```
+
+Leave this off for normal projects so dependency trees are never scanned by default. Set it to `true` only when you explicitly want source discovery to include files under `node_modules`:
+
+```json
+{
+  "source": {
+    "includeNodeModules": true
+  }
+}
+```
+
+This setting controls Sniffler's built-in traversal policy. `source.ignore` still applies as a separate project filter.
 
 ### `workspaces.strategies`
 

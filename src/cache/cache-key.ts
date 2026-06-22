@@ -12,7 +12,8 @@ const toCacheConfigInput = (config: SnifflerConfig): Record<string, unknown> => 
     source: {
       roots: config.source?.roots ?? [],
       extensions: config.source?.extensions ?? [],
-      ignore: config.source?.ignore ?? []
+      ignore: config.source?.ignore ?? [],
+      includeNodeModules: config.source?.includeNodeModules ?? false
     },
     workspaces: {
       strategies: config.workspaces?.strategies ?? []

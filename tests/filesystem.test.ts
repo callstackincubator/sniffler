@@ -21,6 +21,13 @@ const readInvalidJsonError = async (readJson: () => Promise<unknown>) => {
 describe("createMemoryFileSystem", () => {
   it("supports file operations, directory stats, globbing, and typed JSON errors", async () => {
     const fs = createMemoryFileSystem({
+      "app.ts": "export const root = true;\n",
+      "app.test.ts": "export const ignored = true;\n",
+      "node_modules/pkg/index.ts": "export const pkg = true;\n",
+      "src/.hidden.ts": "export const hidden = true;\n",
+      "src/b.ts": "export const b = true;\n",
+      "src/a.ts": "export const a = true;\n",
+      "src/nested/feature.ts": "export const feature = true;\n",
       "src/app.ts": "export const app = 1;\n",
       "src/config.json": "{\"enabled\":true}",
       "src/broken.json": "{"
@@ -40,7 +47,27 @@ describe("createMemoryFileSystem", () => {
       isDirectory: true
     });
 
-    expect(await fs.glob(["**/*.ts"], { cwd: ".", dot: false })).toEqual(["src/app.ts"]);
+    expect(
+      await fs.glob(["**/*.ts"], {
+        cwd: ".",
+        dot: false,
+        ignore: ["**/*.test.ts"],
+        pruneDirectories: ["node_modules"]
+      })
+    ).toEqual(["app.ts", "src/a.ts", "src/app.ts", "src/b.ts", "src/nested/feature.ts"]);
+
+    expect(await fs.glob(["src/**.ts"], { cwd: ".", dot: false })).toEqual([
+      "src/a.ts",
+      "src/app.ts",
+      "src/b.ts"
+    ]);
+
+    expect(await fs.glob(["src/**/*.ts"], { cwd: ".", dot: false })).toEqual([
+      "src/a.ts",
+      "src/app.ts",
+      "src/b.ts",
+      "src/nested/feature.ts"
+    ]);
 
     await fs.writeFile("src/new-file.ts", "export const newFile = true;\n");
     expect(await fs.exists("src/new-file.ts")).toBe(true);
@@ -89,7 +116,14 @@ describe("createNodeFileSystem", () => {
 
     const fs = createNodeFileSystem();
 
+    await fs.writeFile(join(root, "app.ts"), "export const root = true;\n");
+    await fs.writeFile(join(root, "app.test.ts"), "export const ignored = true;\n");
+    await fs.writeFile(join(root, "node_modules/pkg/index.ts"), "export const pkg = true;\n");
+    await fs.writeFile(join(root, "src/.hidden.ts"), "export const hidden = true;\n");
+    await fs.writeFile(join(root, "src/b.ts"), "export const b = true;\n");
+    await fs.writeFile(join(root, "src/a.ts"), "export const a = true;\n");
     await fs.writeFile(join(root, "src/app.ts"), "export const app = 1;\n");
+    await fs.writeFile(join(root, "src/nested/feature.ts"), "export const feature = true;\n");
     await fs.writeFile(join(root, "src/config.json"), "{\"enabled\":true}");
     await fs.writeFile(join(root, "src/broken.json"), "{");
 
@@ -107,7 +141,27 @@ describe("createNodeFileSystem", () => {
       isDirectory: true
     });
 
-    expect(await fs.glob(["**/*.ts"], { cwd: root, dot: false })).toEqual(["src/app.ts"]);
+    expect(
+      await fs.glob(["**/*.ts"], {
+        cwd: root,
+        dot: false,
+        ignore: ["**/*.test.ts"],
+        pruneDirectories: ["node_modules"]
+      })
+    ).toEqual(["app.ts", "src/a.ts", "src/app.ts", "src/b.ts", "src/nested/feature.ts"]);
+
+    expect(await fs.glob(["src/**.ts"], { cwd: root, dot: false })).toEqual([
+      "src/a.ts",
+      "src/app.ts",
+      "src/b.ts"
+    ]);
+
+    expect(await fs.glob(["src/**/*.ts"], { cwd: root, dot: false })).toEqual([
+      "src/a.ts",
+      "src/app.ts",
+      "src/b.ts",
+      "src/nested/feature.ts"
+    ]);
 
     await fs.writeFile(join(root, "src/new-file.ts"), "export const newFile = true;\n");
     expect(await fs.exists(join(root, "src/new-file.ts"))).toBe(true);

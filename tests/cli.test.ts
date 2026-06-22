@@ -5,13 +5,20 @@ import { runCli } from "../src/cli.js";
 
 const createFixtureFileSystem = (
   testMapTargets: ReadonlyArray<string> = ["src/feature.ts"],
-  includeScannerWarning = false
+  options: {
+    extraEntries?: Record<string, string>;
+    config?: Record<string, unknown>;
+    includeScannerWarning?: boolean;
+  } = {}
 ) => {
+  const includeScannerWarning = options.includeScannerWarning === true;
+
   return createMemoryFileSystem({
     ".sniffler/config.json": JSON.stringify({
       output: {
         format: "text"
       },
+      ...(options.config ?? {}),
       tests: {
         manifest: ".sniffler/test-map.json"
       }
@@ -35,7 +42,8 @@ const createFixtureFileSystem = (
           'import "./shared.ts";',
           "export const feature = true;"
         ].join("\n"),
-    "src/shared.ts": "export const shared = true;"
+    "src/shared.ts": "export const shared = true;",
+    ...(options.extraEntries ?? {})
   });
 };
 
@@ -116,7 +124,7 @@ describe("CLI impact command", () => {
   });
 
   it("writes diagnostics when enabled", async () => {
-    const fs = createFixtureFileSystem(["src/feature.ts"], true);
+    const fs = createFixtureFileSystem(["src/feature.ts"], { includeScannerWarning: true });
     const output: string[] = [];
 
     const result = await runCli(
@@ -198,6 +206,77 @@ describe("CLI impact command", () => {
         "impact.tests.match"
       ])
     );
+  });
+
+  it("does not discover node_modules sources by default", async () => {
+    const fs = createFixtureFileSystem(
+      ["src/feature.ts"],
+      {
+        extraEntries: {
+          "node_modules/pkg/index.ts": "export const pkg = true;",
+          "apps/web/node_modules/pkg/index.ts": "export const nestedPkg = true;"
+        }
+      }
+    );
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--diagnostics", "src/shared.ts"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("Recommended E2E tests:");
+
+    const diagnostics = await fs.readJson<{
+      metrics: Record<string, number | string | boolean>;
+    }>(".sniffler/diagnostics.json");
+    expect(diagnostics.metrics.sourceFiles).toBe(2);
+  });
+
+  it("includes node_modules sources when explicitly enabled", async () => {
+    const fs = createFixtureFileSystem(
+      ["src/feature.ts", "node_modules/pkg/index.ts"],
+      {
+        config: {
+          source: {
+            includeNodeModules: true
+          }
+        },
+        extraEntries: {
+          "node_modules/pkg/index.ts": "export const pkg = true;"
+        }
+      }
+    );
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--diagnostics", "src/shared.ts"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("Recommended E2E tests:");
+    const diagnostics = await fs.readJson<{
+      metrics: Record<string, number | string | boolean>;
+    }>(".sniffler/diagnostics.json");
+    expect(diagnostics.metrics.sourceFiles).toBe(3);
   });
 
   it("renders text output for multiple positional changed files", async () => {

@@ -24,6 +24,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "cac": "^7.0.0"
+    "cac": "^7.0.0",
+    "fast-glob": "^3.3.3",
+    "picomatch": "^4.0.4"
   }
 }

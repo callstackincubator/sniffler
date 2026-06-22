@@ -13,7 +13,7 @@ import {
 } from "../cache/stale-checker.js";
 import type { SnifflerConfig, SnifflerOutputFormat } from "../config/config-schema.js";
 import { loadConfig } from "../config/load-config.js";
-import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
+import { normalizePath } from "../filesystem/path-utils.js";
 import { createNodeFileSystem } from "../filesystem/node-filesystem.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { buildGraph, type GraphNode } from "../graph/build-graph.js";
@@ -83,23 +83,6 @@ const normalizePlatform = (platform?: string): string | undefined => {
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
-const matchesPattern = (path: string, pattern: string): boolean => {
-  const normalizedPattern = normalizePath(pattern);
-  const variants = new Set<string>([normalizedPattern, normalizedPattern.replaceAll("**/", "")]);
-
-  for (const variant of variants) {
-    if (variant.length === 0) {
-      continue;
-    }
-
-    if (createGlobMatcher(variant)(path)) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
 const discoverSourceFiles = async (
   fs: FileSystem,
   cwd: string,
@@ -118,21 +101,20 @@ const discoverSourceFiles = async (
       const normalizedRoot = normalizePath(root);
       const rootPrefix = normalizedRoot === "." ? "" : `${normalizedRoot}/`;
 
-      return extensions.map((extension) => `${rootPrefix}**${extension}`);
+      return extensions.map((extension) => `${rootPrefix}**/*${extension}`);
     })
   );
+  const pruneDirectories = config.source?.includeNodeModules === true ? [] : ["node_modules"];
 
-  const candidates = await fs.glob(includePatterns, { cwd, dot: true });
-  const ignoredCandidates = new Set(
-    ignorePatterns.length === 0
-      ? []
-      : (await fs.glob(ignorePatterns, { cwd, dot: true })).map((path) => normalizePath(path))
-  );
-
-  const discovered = candidates
+  const discovered = (
+    await fs.glob(includePatterns, {
+      cwd,
+      dot: true,
+      ignore: ignorePatterns,
+      pruneDirectories
+    })
+  )
     .map((path) => normalizePath(path))
-    .filter((path) => !ignoredCandidates.has(path))
-    .filter((path) => !ignorePatterns.some((pattern) => matchesPattern(path, pattern)))
     .sort((left, right) => left.localeCompare(right));
 
   return discovered;
