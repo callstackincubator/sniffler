@@ -18,6 +18,7 @@ export type SnifflerConfig = {
   tests?: {
     manifest?: string;
     sharedTargets?: ReadonlyArray<string>;
+    runAllWhenChanged?: ReadonlyArray<string>;
   };
   cache?: {
     path?: string;
@@ -53,7 +54,8 @@ export const defaultConfig = {
   },
   tests: {
     manifest: ".sniffler/test-map.json",
-    sharedTargets: []
+    sharedTargets: [],
+    runAllWhenChanged: []
   },
   cache: {
     path: ".sniffler/cache.json",

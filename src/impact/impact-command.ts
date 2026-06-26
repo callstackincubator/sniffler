@@ -13,7 +13,7 @@ import {
 } from "../cache/stale-checker.js";
 import type { SnifflerConfig, SnifflerOutputFormat } from "../config/config-schema.js";
 import { loadConfig } from "../config/load-config.js";
-import { normalizePath } from "../filesystem/path-utils.js";
+import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
 import { createNodeFileSystem } from "../filesystem/node-filesystem.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { buildGraph, type GraphNode } from "../graph/build-graph.js";
@@ -29,6 +29,7 @@ import { packageJsonWorkspacesStrategy } from "../workspaces/package-json-worksp
 import { pnpmWorkspaceStrategy } from "../workspaces/pnpm-workspace-yaml.js";
 import type { TsconfigPathsConfig } from "../resolvers/resolve-import.js";
 import { noopDiagnostics, type Diagnostics } from "../diagnostics/diagnostics.js";
+import type { TestMap } from "../test-map/load-test-map.js";
 
 export type ImpactCommandInput = {
   base?: string;
@@ -95,6 +96,72 @@ const getCwd = (deps: ImpactCommandDeps): string => {
 const normalizePlatform = (platform?: string): string | undefined => {
   const trimmed = platform?.trim();
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+const isGlobTarget = (target: string): boolean => {
+  return /[*?]/.test(target);
+};
+
+const matchesRunAllWhenChanged = (
+  changedFile: string,
+  declaredTarget: string
+): boolean => {
+  const normalizedTarget = normalizePath(declaredTarget);
+
+  if (isGlobTarget(declaredTarget)) {
+    return createGlobMatcher(declaredTarget)(changedFile);
+  }
+
+  return normalizePath(changedFile) === normalizedTarget;
+};
+
+const createRunAllReasons = (
+  changedFiles: ReadonlyArray<string>,
+  runAllWhenChanged: ReadonlyArray<string>
+): Array<{ kind: "run-all"; changedFile: string; declaredTarget: string }> => {
+  const reasons: Array<{ kind: "run-all"; changedFile: string; declaredTarget: string }> = [];
+  const seenReasons = new Set<string>();
+
+  for (const changedFile of changedFiles) {
+    for (const declaredTarget of runAllWhenChanged) {
+      if (!matchesRunAllWhenChanged(changedFile, declaredTarget)) {
+        continue;
+      }
+
+      const reason = {
+        kind: "run-all" as const,
+        changedFile,
+        declaredTarget
+      };
+      const reasonKey = `${reason.changedFile}\u0000${reason.declaredTarget}`;
+
+      if (seenReasons.has(reasonKey)) {
+        continue;
+      }
+
+      seenReasons.add(reasonKey);
+      reasons.push(reason);
+    }
+  }
+
+  return reasons.sort((left, right) => {
+    const changedFileComparison = left.changedFile.localeCompare(right.changedFile);
+    if (changedFileComparison !== 0) {
+      return changedFileComparison;
+    }
+
+    return left.declaredTarget.localeCompare(right.declaredTarget);
+  });
+};
+
+const selectAllTests = (
+  testMap: TestMap,
+  reasons: ReadonlyArray<{ kind: "run-all"; changedFile: string; declaredTarget: string }>
+): ImpactOutput["recommendedTests"] => {
+  return sortUniqueStrings(testMap.tests.map((entry) => entry.test)).map((test) => ({
+    test,
+    reasons
+  }));
 };
 
 const discoverSourceFiles = async (
@@ -250,6 +317,32 @@ export const selectImpact = async (
       return await loadConfig({ fs, configPath: input.configPath });
     })
   ).config;
+  const changedFiles = await diagnostics.time("impact.changedFiles.resolve", async () => {
+    return await resolveChangedFilesFromGit(input, deps, cwd);
+  });
+  const runAllWhenChanged = config.tests?.runAllWhenChanged ?? [];
+  const matchedRunAllReasons = runAllWhenChanged.length === 0
+    ? []
+    : createRunAllReasons(changedFiles, runAllWhenChanged);
+
+  if (matchedRunAllReasons.length > 0) {
+    const testMap = await diagnostics.time("impact.testMap.load", async () => {
+      return await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
+    });
+    const recommendedTests = selectAllTests(testMap, matchedRunAllReasons);
+    diagnostics.record("changedFiles", changedFiles.length);
+    diagnostics.record("affectedModules", 0);
+    diagnostics.record("recommendedTests", recommendedTests.length);
+    diagnostics.record("warnings", 0);
+
+    return {
+      changedFiles: sortUniqueStrings(changedFiles),
+      affectedModules: [],
+      recommendedTests,
+      warnings: []
+    };
+  }
+
   const platform = normalizePlatform(input.platform);
   const staleChecker =
     deps.staleChecker ??
@@ -265,9 +358,6 @@ export const selectImpact = async (
             scannerVersion: SCANNER_VERSION
           });
         });
-  const changedFiles = await diagnostics.time("impact.changedFiles.resolve", async () => {
-    return await resolveChangedFilesFromGit(input, deps, cwd);
-  });
   const workspaceStrategies = [
     ...(config.workspaces?.strategies?.includes("package-json") ? [packageJsonWorkspacesStrategy] : []),
     ...(config.workspaces?.strategies?.includes("pnpm-workspace") ? [pnpmWorkspaceStrategy] : [])

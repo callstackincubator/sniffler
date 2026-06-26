@@ -15,7 +15,8 @@ Create `.sniffler/config.json` in the project root:
     "ignore": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**"]
   },
   "tests": {
-    "manifest": ".sniffler/test-map.json"
+    "manifest": ".sniffler/test-map.json",
+    "runAllWhenChanged": ["pnpm-lock.yaml"]
   }
 }
 ```
@@ -65,7 +66,8 @@ Every property is optional. Missing properties are filled from the defaults belo
   },
   "tests": {
     "manifest": ".sniffler/test-map.json",
-    "sharedTargets": []
+    "sharedTargets": [],
+    "runAllWhenChanged": []
   },
   "cache": {
     "path": ".sniffler/cache.json",
@@ -100,6 +102,7 @@ type SnifflerConfig = {
   tests?: {
     manifest?: string;
     sharedTargets?: string[];
+    runAllWhenChanged?: string[];
   };
   cache?: {
     path?: string;
@@ -339,6 +342,28 @@ Use this for global setup files that affect every test through the dependency gr
   }
 }
 ```
+
+### `tests.runAllWhenChanged`
+
+Paths or globs that force Sniffler to select every test as soon as any changed file matches.
+
+Default:
+
+```json
+[]
+```
+
+Use this for repo-level files like lockfiles:
+
+```json
+{
+  "tests": {
+    "runAllWhenChanged": ["pnpm-lock.yaml", "package-lock.json"]
+  }
+}
+```
+
+When a changed file matches one of these rules, Sniffler short-circuits before workspace discovery, TSConfig loading, source discovery, scan, graph build, traversal, and cache load/save. It still loads the test map and returns every test with a run-all reason.
 
 ### `cache.path`
 
