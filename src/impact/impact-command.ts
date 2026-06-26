@@ -67,7 +67,17 @@ const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
 };
 
 const mergeTargets = (targets: ReadonlyArray<string>, sharedTargets: ReadonlyArray<string>): Array<string> => {
-  return [...new Set([...targets, ...sharedTargets])];
+  const mergedTargets = new Map<string, string>();
+
+  for (const target of [...targets, ...sharedTargets]) {
+    const normalizedTarget = normalizePath(target);
+
+    if (!mergedTargets.has(normalizedTarget)) {
+      mergedTargets.set(normalizedTarget, target);
+    }
+  }
+
+  return [...mergedTargets.values()];
 };
 
 const hashText = (text: string): string => {

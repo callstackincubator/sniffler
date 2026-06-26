@@ -92,4 +92,30 @@ describe("sharedTargets", () => {
       }
     ]);
   });
+
+  it("dedupes shared targets that normalize to an existing test target", async () => {
+    const fs = createSharedTargetsFixtureFileSystem({
+      tests: [
+        {
+          test: "alpha.spec.ts",
+          targets: ["./src/global.ts"]
+        }
+      ]
+    });
+
+    const result = await selectImpact({ changedFiles: ["src/some-other.ts"] }, { fs, cwd: "." });
+
+    expect(result.recommendedTests).toEqual([
+      {
+        test: "alpha.spec.ts",
+        reasons: [
+          {
+            changedFile: "src/some-other.ts",
+            declaredTarget: "./src/global.ts",
+            dependencyPath: ["src/some-other.ts", "src/global.ts"]
+          }
+        ]
+      }
+    ]);
+  });
 });
