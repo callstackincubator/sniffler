@@ -231,6 +231,18 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
         `Invalid config in ${path}: tests.manifest must be a string.`
       );
     }
+
+    if (
+      "sharedTargets" in value.tests &&
+      value.tests.sharedTargets !== undefined &&
+      !isStringArray(value.tests.sharedTargets)
+    ) {
+      throw createLoadError(
+        "SNIFFLER_INVALID_CONFIG",
+        path,
+        `Invalid config in ${path}: tests.sharedTargets must be an array of strings.`
+      );
+    }
   }
 
   if ("cache" in value && value.cache !== undefined) {
@@ -299,7 +311,8 @@ const normalizeConfig = (config: SnifflerConfigFile): SnifflerConfig => {
       }
     },
     tests: {
-      manifest: config.tests?.manifest ?? defaultConfig.tests?.manifest
+      manifest: config.tests?.manifest ?? defaultConfig.tests?.manifest,
+      sharedTargets: config.tests?.sharedTargets ?? defaultConfig.tests?.sharedTargets
     },
     cache: {
       path: config.cache?.path ?? defaultConfig.cache?.path,
