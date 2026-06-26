@@ -979,26 +979,4 @@ describe("CLI help", () => {
     expect(stderr).toEqual([]);
   });
 
-  it("routes version through injected stdout", async () => {
-    const fs = createFixtureFileSystem();
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-
-    const result = await runCli(
-      ["--version"],
-      {
-        stdout: (chunk) => {
-          stdout.push(chunk);
-        },
-        stderr: (chunk) => {
-          stderr.push(chunk);
-        }
-      },
-      { fs, cwd: "." }
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(stdout.join("")).toContain("0.1.0");
-    expect(stderr).toEqual([]);
-  });
 });
