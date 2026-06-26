@@ -51,6 +51,35 @@ const createFixtureFileSystem = (
   });
 };
 
+const createRunAllFixtureFileSystem = () => {
+  return createMemoryFileSystem({
+    ".sniffler/config.json": JSON.stringify({
+      output: {
+        format: "text"
+      },
+      tests: {
+        manifest: ".sniffler/test-map.json",
+        runAllWhenChanged: ["pnpm-lock.yaml"]
+      }
+    }),
+    ".sniffler/test-map.json": JSON.stringify({
+      tests: [
+        {
+          test: "e2e/feature.spec.ts",
+          targets: ["src/feature.ts"]
+        },
+        {
+          test: "e2e/app.spec.ts",
+          targets: ["src/app.ts"]
+        }
+      ]
+    }),
+    "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+    "src/app.ts": "export const app = true;",
+    "src/feature.ts": "export const feature = true;"
+  });
+};
+
 const createPlatformFixtureFileSystem = () => {
   return createMemoryFileSystem({
     ".sniffler/config.json": JSON.stringify({
@@ -392,6 +421,77 @@ describe("CLI impact command", () => {
               changedFile: "src/shared.ts",
               declaredTarget: "src/feature.ts",
               dependencyPath: ["src/shared.ts", "src/feature.ts"]
+            }
+          ]
+        }
+      ],
+      warnings: []
+    });
+  });
+
+  it("renders run-all text output", async () => {
+    const fs = createRunAllFixtureFileSystem();
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "pnpm-lock.yaml"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(output.join("")).toContain("run all: pnpm-lock.yaml");
+    expect(output.join("")).toContain("changed: pnpm-lock.yaml");
+    expect(output.join("")).toContain("e2e/app.spec.ts");
+    expect(output.join("")).toContain("e2e/feature.spec.ts");
+  });
+
+  it("renders run-all JSON output", async () => {
+    const fs = createRunAllFixtureFileSystem();
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--format", "json", "pnpm-lock.yaml"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(output.join(""))).toEqual({
+      changedFiles: ["pnpm-lock.yaml"],
+      affectedModules: [],
+      recommendedTests: [
+        {
+          test: "e2e/app.spec.ts",
+          reasons: [
+            {
+              kind: "run-all",
+              changedFile: "pnpm-lock.yaml",
+              declaredTarget: "pnpm-lock.yaml"
+            }
+          ]
+        },
+        {
+          test: "e2e/feature.spec.ts",
+          reasons: [
+            {
+              kind: "run-all",
+              changedFile: "pnpm-lock.yaml",
+              declaredTarget: "pnpm-lock.yaml"
             }
           ]
         }

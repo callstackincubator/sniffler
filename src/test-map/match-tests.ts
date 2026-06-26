@@ -8,9 +8,14 @@ export type MatchedTest = {
 };
 
 export type TestMatchReason = {
+  kind?: "dependency";
   changedFile: string;
   declaredTarget: string;
   dependencyPath: ReadonlyArray<string>;
+} | {
+  kind: "run-all";
+  changedFile: string;
+  declaredTarget: string;
 };
 
 export type MatchTestsInput = {
@@ -22,8 +27,25 @@ const isGlobTarget = (target: string): boolean => {
   return /[*?]/.test(target);
 };
 
-const compareReasons = (left: TestMatchReason, right: TestMatchReason): number => {
-  const pathLengthComparison = left.dependencyPath.length - right.dependencyPath.length;
+const getReasonPathLength = (reason: TestMatchReason): number => {
+  return reason.kind === "run-all" ? 0 : reason.dependencyPath.length;
+};
+
+const getReasonKindRank = (reason: TestMatchReason): number => {
+  return reason.kind === "run-all" ? 1 : 0;
+};
+
+const getReasonDependencyPath = (reason: TestMatchReason): ReadonlyArray<string> => {
+  return reason.kind === "run-all" ? [] : reason.dependencyPath;
+};
+
+export const compareTestMatchReasons = (left: TestMatchReason, right: TestMatchReason): number => {
+  const kindComparison = getReasonKindRank(left) - getReasonKindRank(right);
+  if (kindComparison !== 0) {
+    return kindComparison;
+  }
+
+  const pathLengthComparison = getReasonPathLength(left) - getReasonPathLength(right);
   if (pathLengthComparison !== 0) {
     return pathLengthComparison;
   }
@@ -45,7 +67,7 @@ const compareReasons = (left: TestMatchReason, right: TestMatchReason): number =
     return targetComparison;
   }
 
-  return left.dependencyPath.join("\u0000").localeCompare(right.dependencyPath.join("\u0000"));
+  return getReasonDependencyPath(left).join("\u0000").localeCompare(getReasonDependencyPath(right).join("\u0000"));
 };
 
 export const matchTests = ({ testMap, impact }: MatchTestsInput): Array<MatchedTest> => {
@@ -100,7 +122,7 @@ export const matchTests = ({ testMap, impact }: MatchTestsInput): Array<MatchedT
 
     matchedTests.push({
       test: testEntry.test,
-      reasons: [...reasons].sort(compareReasons)
+      reasons: [...reasons].sort(compareTestMatchReasons)
     });
   }
 

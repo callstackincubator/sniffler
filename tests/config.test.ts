@@ -17,6 +17,8 @@ describe("loadConfig", () => {
 
     expect(result.configPath).toBe(defaultConfigPath);
     expect(result.config.tests?.manifest).toBe("custom/test-map.json");
+    expect(result.config.tests?.sharedTargets).toEqual([]);
+    expect(result.config.tests?.runAllWhenChanged).toEqual([]);
     expect(result.config.output?.format).toBe("text");
     expect(result.config.cache?.stale).toBe("content");
     expect(result.config.source?.includeNodeModules).toBe(false);
@@ -34,6 +36,23 @@ describe("loadConfig", () => {
     const result = await loadConfig({ fs });
 
     expect(result.config.cache?.stale).toBe("metadata");
+  });
+
+  it("loads runAllWhenChanged rules", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          runAllWhenChanged: ["pnpm-lock.yaml", "**/package-lock.json"]
+        }
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect(result.config.tests?.runAllWhenChanged).toEqual([
+      "pnpm-lock.yaml",
+      "**/package-lock.json"
+    ]);
   });
 
   it("loads an explicit config path", async () => {
@@ -115,6 +134,52 @@ describe("loadConfig", () => {
       code: "SNIFFLER_INVALID_CONFIG",
       path: defaultConfigPath,
       message: expect.stringContaining("source.includeNodeModules must be a boolean")
+    });
+  });
+
+  it("loads tests.sharedTargets when provided", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          sharedTargets: ["src/global.ts", "src/setup.ts"]
+        }
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect(result.config.tests?.sharedTargets).toEqual(["src/global.ts", "src/setup.ts"]);
+  });
+
+  it("fails with an actionable error when tests.sharedTargets is not a string array", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          sharedTargets: ["src/global.ts", 123]
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining("tests.sharedTargets must be an array of strings")
+    });
+  });
+
+  it("fails with an actionable error when runAllWhenChanged is not a string array", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          runAllWhenChanged: ["pnpm-lock.yaml", 42]
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining("tests.runAllWhenChanged must be an array of strings")
     });
   });
 });

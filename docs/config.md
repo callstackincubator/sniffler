@@ -15,7 +15,8 @@ Create `.sniffler/config.json` in the project root:
     "ignore": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**"]
   },
   "tests": {
-    "manifest": ".sniffler/test-map.json"
+    "manifest": ".sniffler/test-map.json",
+    "runAllWhenChanged": ["pnpm-lock.yaml"]
   }
 }
 ```
@@ -64,7 +65,9 @@ Every property is optional. Missing properties are filled from the defaults belo
     }
   },
   "tests": {
-    "manifest": ".sniffler/test-map.json"
+    "manifest": ".sniffler/test-map.json",
+    "sharedTargets": [],
+    "runAllWhenChanged": []
   },
   "cache": {
     "path": ".sniffler/cache.json",
@@ -98,6 +101,8 @@ type SnifflerConfig = {
   };
   tests?: {
     manifest?: string;
+    sharedTargets?: string[];
+    runAllWhenChanged?: string[];
   };
   cache?: {
     path?: string;
@@ -316,6 +321,49 @@ The path is resolved from the current working directory. The manifest must exist
 ```
 
 Each entry maps one E2E test file to the source paths or glob targets it covers.
+
+### `tests.sharedTargets`
+
+Extra source targets Sniffler appends to every test entry before it matches the graph.
+
+Default:
+
+```json
+[]
+```
+
+Use this for global setup files that affect every test through the dependency graph. For example, if `src/global.ts` imports `src/some-other.ts`, set `tests.sharedTargets` to `["src/global.ts"]`. When `src/some-other.ts` changes, Sniffler still analyzes the graph, finds the path from `src/some-other.ts` to `src/global.ts`, and selects every test that shares that setup module.
+
+```json
+{
+  "tests": {
+    "manifest": ".sniffler/test-map.json",
+    "sharedTargets": ["src/global.ts"]
+  }
+}
+```
+
+### `tests.runAllWhenChanged`
+
+Paths or globs that force Sniffler to select every test as soon as any changed file matches.
+
+Default:
+
+```json
+[]
+```
+
+Use this for repo-level files like lockfiles:
+
+```json
+{
+  "tests": {
+    "runAllWhenChanged": ["pnpm-lock.yaml", "package-lock.json"]
+  }
+}
+```
+
+When a changed file matches one of these rules, Sniffler short-circuits before workspace discovery, TSConfig loading, source discovery, scan, graph build, traversal, and cache load/save. It still loads the test map and returns every test with a run-all reason.
 
 ### `cache.path`
 
