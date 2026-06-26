@@ -144,12 +144,10 @@ const selectAllTests = (
   testMap: TestMap,
   reasons: ReadonlyArray<{ kind: "run-all"; changedFile: string; declaredTarget: string }>
 ): ImpactOutput["recommendedTests"] => {
-  return [...testMap.tests]
-    .sort((left, right) => left.test.localeCompare(right.test))
-    .map((entry) => ({
-      test: entry.test,
-      reasons
-    }));
+  return sortUniqueStrings(testMap.tests.map((entry) => entry.test)).map((test) => ({
+    test,
+    reasons
+  }));
 };
 
 const discoverSourceFiles = async (

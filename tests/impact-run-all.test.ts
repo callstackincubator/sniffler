@@ -23,7 +23,10 @@ const createDiagnostics = (): Diagnostics & { stages: Array<{ name: string; dura
   };
 };
 
-const createFixtureFileSystem = (runAllWhenChanged: ReadonlyArray<string>) => {
+const createFixtureFileSystem = (input: {
+  runAllWhenChanged: ReadonlyArray<string>;
+  tests?: ReadonlyArray<{ test: string; targets: ReadonlyArray<string> }>;
+}) => {
   return createMemoryFileSystem({
     ".sniffler/config.json": JSON.stringify({
       source: {
@@ -43,23 +46,24 @@ const createFixtureFileSystem = (runAllWhenChanged: ReadonlyArray<string>) => {
       },
       tests: {
         manifest: ".sniffler/test-map.json",
-        runAllWhenChanged
+        runAllWhenChanged: input.runAllWhenChanged
       },
       cache: {
         path: ".sniffler/cache.json"
       }
     }),
     ".sniffler/test-map.json": JSON.stringify({
-      tests: [
-        {
-          test: "e2e/app.spec.ts",
-          targets: ["src/app.ts"]
-        },
-        {
-          test: "e2e/feature.spec.ts",
-          targets: ["src/feature.ts"]
-        }
-      ]
+      tests:
+        input.tests ?? [
+          {
+            test: "e2e/app.spec.ts",
+            targets: ["src/app.ts"]
+          },
+          {
+            test: "e2e/feature.spec.ts",
+            targets: ["src/feature.ts"]
+          }
+        ]
     }),
     "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
     "src/app.ts": "export const app = true;\n",
@@ -73,7 +77,7 @@ afterEach(() => {
 
 describe("run-all when changed", () => {
   it("selects every test when exact path matches", async () => {
-    const fs = createFixtureFileSystem(["pnpm-lock.yaml"]);
+    const fs = createFixtureFileSystem({ runAllWhenChanged: ["pnpm-lock.yaml"] });
 
     const result = await selectImpact({ changedFiles: ["pnpm-lock.yaml"] }, { fs, cwd: "." });
 
@@ -107,7 +111,7 @@ describe("run-all when changed", () => {
   });
 
   it("selects every test when glob matches", async () => {
-    const fs = createFixtureFileSystem(["**/pnpm-lock.yaml"]);
+    const fs = createFixtureFileSystem({ runAllWhenChanged: ["**/pnpm-lock.yaml"] });
 
     const result = await selectImpact({ changedFiles: ["packages/web/pnpm-lock.yaml"] }, { fs, cwd: "." });
 
@@ -136,7 +140,7 @@ describe("run-all when changed", () => {
   });
 
   it("short-circuits before graph, cache, and source work", async () => {
-    const fs = createFixtureFileSystem(["pnpm-lock.yaml"]);
+    const fs = createFixtureFileSystem({ runAllWhenChanged: ["pnpm-lock.yaml"] });
     const readJsonSpy = vi.spyOn(fs, "readJson");
     const globSpy = vi.spyOn(fs, "glob");
     const readFileSpy = vi.spyOn(fs, "readFile");
@@ -164,6 +168,51 @@ describe("run-all when changed", () => {
       "impact.config.load",
       "impact.changedFiles.resolve",
       "impact.testMap.load"
+    ]);
+  });
+
+  it("emits duplicate test entries once", async () => {
+    const fs = createFixtureFileSystem({
+      runAllWhenChanged: ["pnpm-lock.yaml"],
+      tests: [
+        {
+          test: "e2e/app.spec.ts",
+          targets: ["src/app.ts"]
+        },
+        {
+          test: "e2e/app.spec.ts",
+          targets: ["src/app.ts"]
+        },
+        {
+          test: "e2e/feature.spec.ts",
+          targets: ["src/feature.ts"]
+        }
+      ]
+    });
+
+    const result = await selectImpact({ changedFiles: ["pnpm-lock.yaml"] }, { fs, cwd: "." });
+
+    expect(result.recommendedTests).toEqual([
+      {
+        test: "e2e/app.spec.ts",
+        reasons: [
+          {
+            kind: "run-all",
+            changedFile: "pnpm-lock.yaml",
+            declaredTarget: "pnpm-lock.yaml"
+          }
+        ]
+      },
+      {
+        test: "e2e/feature.spec.ts",
+        reasons: [
+          {
+            kind: "run-all",
+            changedFile: "pnpm-lock.yaml",
+            declaredTarget: "pnpm-lock.yaml"
+          }
+        ]
+      }
     ]);
   });
 });
