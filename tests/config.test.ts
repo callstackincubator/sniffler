@@ -36,6 +36,23 @@ describe("loadConfig", () => {
     expect(result.config.cache?.stale).toBe("metadata");
   });
 
+  it("loads runAllWhenChanged rules", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          runAllWhenChanged: ["pnpm-lock.yaml", "**/package-lock.json"]
+        }
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect(result.config.tests?.runAllWhenChanged).toEqual([
+      "pnpm-lock.yaml",
+      "**/package-lock.json"
+    ]);
+  });
+
   it("loads an explicit config path", async () => {
     const fs = createMemoryFileSystem({
       "configs/sniffler.json": JSON.stringify({
@@ -115,6 +132,22 @@ describe("loadConfig", () => {
       code: "SNIFFLER_INVALID_CONFIG",
       path: defaultConfigPath,
       message: expect.stringContaining("source.includeNodeModules must be a boolean")
+    });
+  });
+
+  it("fails with an actionable error when runAllWhenChanged is not a string array", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          runAllWhenChanged: ["pnpm-lock.yaml", 42]
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining("tests.runAllWhenChanged must be an array of strings")
     });
   });
 });

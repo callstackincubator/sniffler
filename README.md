@@ -64,6 +64,19 @@ Start with a focused config that points Sniffler at your source roots and test m
 
 Sniffler fills in defaults for source extensions, workspace discovery, TSConfig paths, cache behavior, and output format. See [docs/config.md](docs/config.md) for the full configuration reference.
 
+If a lockfile or other repo-level file should force every test, add `tests.runAllWhenChanged`:
+
+```json
+{
+  "tests": {
+    "manifest": ".sniffler/test-map.json",
+    "runAllWhenChanged": ["pnpm-lock.yaml"]
+  }
+}
+```
+
+Sniffler checks this before dependency analysis, so a match skips workspace discovery, source scanning, graph build, and cache work.
+
 Then run the CLI from the project root:
 
 ```bash

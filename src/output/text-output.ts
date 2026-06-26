@@ -1,4 +1,5 @@
 import type { ImpactOutput } from "./output-types.js";
+import { compareTestMatchReasons } from "../test-map/match-tests.js";
 
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -6,35 +7,6 @@ const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
 
 const formatPath = (path: ReadonlyArray<string>): string => {
   return path.join(" -> ");
-};
-
-const compareReasons = (
-  left: ImpactOutput["recommendedTests"][number]["reasons"][number],
-  right: ImpactOutput["recommendedTests"][number]["reasons"][number]
-): number => {
-  const pathLengthComparison = left.dependencyPath.length - right.dependencyPath.length;
-  if (pathLengthComparison !== 0) {
-    return pathLengthComparison;
-  }
-
-  const leftIsGlob = /[*?]/.test(left.declaredTarget);
-  const rightIsGlob = /[*?]/.test(right.declaredTarget);
-
-  if (leftIsGlob !== rightIsGlob) {
-    return leftIsGlob ? 1 : -1;
-  }
-
-  const changedFileComparison = left.changedFile.localeCompare(right.changedFile);
-  if (changedFileComparison !== 0) {
-    return changedFileComparison;
-  }
-
-  const targetComparison = left.declaredTarget.localeCompare(right.declaredTarget);
-  if (targetComparison !== 0) {
-    return targetComparison;
-  }
-
-  return formatPath(left.dependencyPath).localeCompare(formatPath(right.dependencyPath));
 };
 
 export const renderTextOutput = (output: ImpactOutput): string => {
@@ -74,9 +46,15 @@ export const renderTextOutput = (output: ImpactOutput): string => {
     for (const test of recommendedTests) {
       lines.push(`  ${test.test}`);
 
-      const reasons = [...test.reasons].sort(compareReasons);
+      const reasons = [...test.reasons].sort(compareTestMatchReasons);
 
       for (const reason of reasons) {
+        if (reason.kind === "run-all") {
+          lines.push(`    run all: ${reason.declaredTarget}`);
+          lines.push(`    changed: ${reason.changedFile}`);
+          continue;
+        }
+
         lines.push(`    target: ${reason.declaredTarget}`);
         lines.push(`    path: ${formatPath(reason.dependencyPath)}`);
       }
