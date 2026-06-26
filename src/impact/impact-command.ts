@@ -66,6 +66,10 @@ const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 };
 
+const mergeTargets = (targets: ReadonlyArray<string>, sharedTargets: ReadonlyArray<string>): Array<string> => {
+  return [...new Set([...targets, ...sharedTargets])];
+};
+
 const hashText = (text: string): string => {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 };
@@ -418,8 +422,18 @@ export const selectImpact = async (
   const testMap = await diagnostics.time("impact.testMap.load", async () => {
     return await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
   });
+  const sharedTargets = config.tests?.sharedTargets ?? [];
+  const expandedTestMap =
+    sharedTargets.length === 0
+      ? testMap
+      : {
+          tests: testMap.tests.map((entry) => ({
+            test: entry.test,
+            targets: mergeTargets(entry.targets, sharedTargets)
+          }))
+        };
   const recommendedTests = await diagnostics.time("impact.tests.match", async () => {
-    return matchTests({ testMap, impact });
+    return matchTests({ testMap: expandedTestMap, impact });
   });
   diagnostics.record("recommendedTests", recommendedTests.length);
   diagnostics.record("warnings", warnings.length);

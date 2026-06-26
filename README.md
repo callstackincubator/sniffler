@@ -64,6 +64,8 @@ Start with a focused config that points Sniffler at your source roots and test m
 
 Sniffler fills in defaults for source extensions, workspace discovery, TSConfig paths, cache behavior, and output format. See [docs/config.md](docs/config.md) for the full configuration reference.
 
+If you have a shared setup module that reaches into the rest of the app, add it under `tests.sharedTargets` so Sniffler still walks the dependency graph from that module into its imports. For example, when `src/global.ts` imports `src/some-other.ts`, a change to `src/some-other.ts` can still select every test that shares `src/global.ts`.
+
 Then run the CLI from the project root:
 
 ```bash

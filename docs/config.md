@@ -64,7 +64,8 @@ Every property is optional. Missing properties are filled from the defaults belo
     }
   },
   "tests": {
-    "manifest": ".sniffler/test-map.json"
+    "manifest": ".sniffler/test-map.json",
+    "sharedTargets": []
   },
   "cache": {
     "path": ".sniffler/cache.json",
@@ -98,6 +99,7 @@ type SnifflerConfig = {
   };
   tests?: {
     manifest?: string;
+    sharedTargets?: string[];
   };
   cache?: {
     path?: string;
@@ -316,6 +318,27 @@ The path is resolved from the current working directory. The manifest must exist
 ```
 
 Each entry maps one E2E test file to the source paths or glob targets it covers.
+
+### `tests.sharedTargets`
+
+Extra source targets Sniffler appends to every test entry before it matches the graph.
+
+Default:
+
+```json
+[]
+```
+
+Use this for global setup files that affect every test through the dependency graph. For example, if `src/global.ts` imports `src/some-other.ts`, set `tests.sharedTargets` to `["src/global.ts"]`. When `src/some-other.ts` changes, Sniffler still analyzes the graph, finds the path from `src/some-other.ts` to `src/global.ts`, and selects every test that shares that setup module.
+
+```json
+{
+  "tests": {
+    "manifest": ".sniffler/test-map.json",
+    "sharedTargets": ["src/global.ts"]
+  }
+}
+```
 
 ### `cache.path`
 
