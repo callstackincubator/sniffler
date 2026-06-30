@@ -78,13 +78,13 @@ export const matchTests = ({ testMap, impact }: MatchTestsInput): Array<MatchedT
   }
 
   const matchedTests: MatchedTest[] = [];
-  const sortedTests = [...testMap.tests].sort((left, right) => left.test.localeCompare(right.test));
+  const sortedTests = [...testMap].sort((left, right) => left.test.localeCompare(right.test));
 
   for (const testEntry of sortedTests) {
     const reasons: TestMatchReason[] = [];
     const seenReasons = new Set<string>();
 
-    for (const target of testEntry.targets) {
+    for (const target of testEntry.dependsOn) {
       const normalizedTarget = normalizePath(target);
       const matcher = isGlobTarget(target) ? createGlobMatcher(target) : null;
 

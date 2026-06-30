@@ -161,8 +161,9 @@ const loadDefaultScenarios = (appRoot) => {
 
   if (existsSync(manifestPath)) {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    const target = manifest.tests?.find((entry) => Array.isArray(entry.targets) && entry.targets.length > 0)
-      ?.targets?.[0];
+    const target = Array.isArray(manifest)
+      ? manifest.find((entry) => Array.isArray(entry.dependsOn) && entry.dependsOn.length > 0)?.dependsOn?.[0]
+      : manifest.tests?.find((entry) => Array.isArray(entry.targets) && entry.targets.length > 0)?.targets?.[0];
 
     if (typeof target === "string") {
       scenarios.push({

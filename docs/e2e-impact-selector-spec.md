@@ -177,22 +177,19 @@ Default manifest path:
 Example:
 
 ```json
-{
-  "$schema": "https://sniffler.dev/schema/test-map.v1.json",
-  "tests": [
-    {
-      "test": "e2e/checkout.spec.ts",
-      "targets": [
-        "apps/mobile/src/screens/CheckoutScreen.tsx",
-        "packages/checkout/src/**"
-      ]
-    },
-    {
-      "test": "e2e/profile.spec.ts",
-      "targets": ["apps/mobile/src/screens/ProfileScreen.tsx"]
-    }
-  ]
-}
+[
+  {
+    "test": "e2e/checkout.spec.ts",
+    "dependsOn": [
+      "apps/mobile/src/screens/CheckoutScreen.tsx",
+      "packages/checkout/src/**"
+    ]
+  },
+  {
+    "test": "e2e/profile.spec.ts",
+    "dependsOn": ["apps/mobile/src/screens/ProfileScreen.tsx"]
+  }
+]
 ```
 
 Target matching supports:

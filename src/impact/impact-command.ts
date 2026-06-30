@@ -22,6 +22,7 @@ import { renderJsonOutput } from "../output/json-output.js";
 import type { ImpactOutput } from "../output/output-types.js";
 import { renderTextOutput } from "../output/text-output.js";
 import { scanFileText } from "../scanner/scan-file.js";
+import { convertTestMap } from "../test-map/convert-test-map.js";
 import { loadTestMap } from "../test-map/load-test-map.js";
 import { matchTests } from "../test-map/match-tests.js";
 import { discoverWorkspaces } from "../workspaces/discover-workspaces.js";
@@ -67,10 +68,10 @@ const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 };
 
-const mergeTargets = (targets: ReadonlyArray<string>, sharedTargets: ReadonlyArray<string>): Array<string> => {
+const mergeDependsOn = (dependsOn: ReadonlyArray<string>, sharedTargets: ReadonlyArray<string>): Array<string> => {
   const mergedTargets = new Map<string, string>();
 
-  for (const target of [...targets, ...sharedTargets]) {
+  for (const target of [...dependsOn, ...sharedTargets]) {
     const normalizedTarget = normalizePath(target);
 
     if (!mergedTargets.has(normalizedTarget)) {
@@ -158,7 +159,7 @@ const selectAllTests = (
   testMap: TestMap,
   reasons: ReadonlyArray<{ kind: "run-all"; changedFile: string; declaredTarget: string }>
 ): ImpactOutput["recommendedTests"] => {
-  return sortUniqueStrings(testMap.tests.map((entry) => entry.test)).map((test) => ({
+  return sortUniqueStrings(testMap.map((entry) => entry.test)).map((test) => ({
     test,
     reasons
   }));
@@ -317,6 +318,8 @@ export const selectImpact = async (
       return await loadConfig({ fs, configPath: input.configPath });
     })
   ).config;
+  const testMapPath = normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json"));
+  await convertTestMap(fs, testMapPath);
   const changedFiles = await diagnostics.time("impact.changedFiles.resolve", async () => {
     return await resolveChangedFilesFromGit(input, deps, cwd);
   });
@@ -327,7 +330,7 @@ export const selectImpact = async (
 
   if (matchedRunAllReasons.length > 0) {
     const testMap = await diagnostics.time("impact.testMap.load", async () => {
-      return await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
+      return await loadTestMap(fs, testMapPath);
     });
     const recommendedTests = selectAllTests(testMap, matchedRunAllReasons);
     diagnostics.record("changedFiles", changedFiles.length);
@@ -520,18 +523,16 @@ export const selectImpact = async (
   diagnostics.record("changedFiles", changedFiles.length);
   diagnostics.record("affectedModules", impact.affectedModules.length);
   const testMap = await diagnostics.time("impact.testMap.load", async () => {
-    return await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
+    return await loadTestMap(fs, testMapPath);
   });
   const sharedTargets = config.tests?.sharedTargets ?? [];
   const expandedTestMap =
     sharedTargets.length === 0
       ? testMap
-      : {
-          tests: testMap.tests.map((entry) => ({
-            test: entry.test,
-            targets: mergeTargets(entry.targets, sharedTargets)
-          }))
-        };
+      : testMap.map((entry) => ({
+          test: entry.test,
+          dependsOn: mergeDependsOn(entry.dependsOn, sharedTargets)
+        }));
   const recommendedTests = await diagnostics.time("impact.tests.match", async () => {
     return matchTests({ testMap: expandedTestMap, impact });
   });

@@ -307,24 +307,24 @@ Default:
 ".sniffler/test-map.json"
 ```
 
-The path is resolved from the current working directory. The manifest must exist and contain a `tests` array:
+The path is resolved from the current working directory. The manifest must exist and contain a JSON array of test entries:
 
 ```json
-{
-  "tests": [
-    {
-      "test": "e2e/checkout.spec.ts",
-      "targets": ["apps/web/src/screens/CheckoutScreen.tsx", "packages/checkout/src/**"]
-    }
-  ]
-}
+[
+  {
+    "test": "e2e/checkout.spec.ts",
+    "dependsOn": ["apps/web/src/screens/CheckoutScreen.tsx", "packages/checkout/src/**"]
+  }
+]
 ```
 
-Each entry maps one E2E test file to the source paths or glob targets it covers.
+Each entry maps one E2E test file to the source paths or glob targets it depends on.
+
+Sniffler also auto-converts the legacy object shape (`{ "tests": [...] }`) to this array form the first time it reads the file.
 
 ### `tests.sharedTargets`
 
-Extra source targets Sniffler appends to every test entry before it matches the graph.
+Extra source targets Sniffler appends to every `dependsOn` entry before it matches the graph.
 
 Default:
 

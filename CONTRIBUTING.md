@@ -120,20 +120,18 @@ Config files are JSON only because they need to be hashable and safe to evaluate
 The test map lives at `.sniffler/test-map.json` by default and uses this shape:
 
 ```json
-{
-  "tests": [
-    {
-      "test": "e2e/checkout.spec.ts",
-      "targets": [
-        "apps/mobile/src/screens/CheckoutScreen.tsx",
-        "packages/checkout/src/**"
-      ]
-    }
-  ]
-}
+[
+  {
+    "test": "e2e/checkout.spec.ts",
+    "dependsOn": [
+      "apps/mobile/src/screens/CheckoutScreen.tsx",
+      "packages/checkout/src/**"
+    ]
+  }
+]
 ```
 
-Targets may be exact file paths or glob patterns. When impact traversal reaches a declared target, Sniffler selects the matching test and includes the dependency path used to reach it.
+Targets may be exact file paths or glob patterns. When impact traversal reaches a declared dependency, Sniffler selects the matching test and includes the dependency path used to reach it.
 
 ## Development Workflow
 

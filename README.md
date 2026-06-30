@@ -79,6 +79,8 @@ If a lockfile or other repo-level file should force every test, add `tests.runAl
 
 Sniffler checks this before dependency analysis, so a match skips workspace discovery, source scanning, graph build, and cache work.
 
+The test map now uses a plain array of entries with `test` and `dependsOn`. Sniffler auto-converts the legacy `{ "tests": [...] }` shape on first read so older repos keep working.
+
 Then run the CLI from the project root:
 
 ```bash

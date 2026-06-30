@@ -39,18 +39,16 @@ const impact: ImpactResult = {
   ]
 };
 
-const testMap: TestMap = {
-  tests: [
-    {
-      test: "zeta.spec.ts",
-      targets: ["apps/web/src/screens/Checkout.tsx", "apps/web/src/screens/**"]
-    },
-    {
-      test: "alpha.spec.ts",
-      targets: ["packages/core/src/index.ts"]
-    }
-  ]
-};
+const testMap: TestMap = [
+  {
+    test: "zeta.spec.ts",
+    dependsOn: ["apps/web/src/screens/Checkout.tsx", "apps/web/src/screens/**"]
+  },
+  {
+    test: "alpha.spec.ts",
+    dependsOn: ["packages/core/src/index.ts"]
+  }
+];
 
 describe("matchTests", () => {
   it("matches exact and glob targets with shortest dependency paths", () => {
@@ -102,9 +100,7 @@ describe("matchTests", () => {
   });
 
   it("returns stable results even when the manifest order changes", () => {
-    const shuffled: TestMap = {
-      tests: [...testMap.tests].reverse()
-    };
+    const shuffled: TestMap = [...testMap].reverse();
 
     expect(matchTests({ testMap: shuffled, impact })).toEqual(matchTests({ testMap, impact }));
   });
