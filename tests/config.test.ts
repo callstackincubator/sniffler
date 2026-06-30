@@ -19,6 +19,7 @@ describe("loadConfig", () => {
     expect(result.config.tests?.manifest).toBe("custom/test-map.json");
     expect(result.config.tests?.sharedTargets).toEqual([]);
     expect(result.config.tests?.runAllWhenChanged).toEqual([]);
+    expect((result.config.tests as any)?.invalidateSubtreeWhenTouched).toEqual([]);
     expect(result.config.output?.format).toBe("text");
     expect(result.config.cache?.stale).toBe("content");
     expect(result.config.source?.includeNodeModules).toBe(false);
@@ -180,6 +181,39 @@ describe("loadConfig", () => {
       code: "SNIFFLER_INVALID_CONFIG",
       path: defaultConfigPath,
       message: expect.stringContaining("tests.runAllWhenChanged must be an array of strings")
+    });
+  });
+
+  it("loads tests.invalidateSubtreeWhenTouched when provided", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          invalidateSubtreeWhenTouched: ["src/App.tsx", "src/screens/**/*.tsx"]
+        }
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect((result.config.tests as any)?.invalidateSubtreeWhenTouched).toEqual([
+      "src/App.tsx",
+      "src/screens/**/*.tsx"
+    ]);
+  });
+
+  it("fails with an actionable error when tests.invalidateSubtreeWhenTouched is not a string array", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        tests: {
+          invalidateSubtreeWhenTouched: ["src/App.tsx", 42]
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining("tests.invalidateSubtreeWhenTouched must be an array of strings")
     });
   });
 });

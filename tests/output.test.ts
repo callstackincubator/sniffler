@@ -3,7 +3,7 @@ import { renderJsonOutput } from "../src/output/json-output.js";
 import { renderTextOutput } from "../src/output/text-output.js";
 import type { ImpactOutput } from "../src/output/output-types.js";
 
-const output: ImpactOutput = {
+const output = {
   changedFiles: ["packages/core/src/index.ts"],
   affectedModules: [
     "apps/web/src/components/Button.tsx",
@@ -15,25 +15,29 @@ const output: ImpactOutput = {
       test: "e2e/checkout.spec.ts",
       reasons: [
         {
+          kind: "containment",
           changedFile: "packages/core/src/index.ts",
           declaredTarget: "apps/web/src/screens/Checkout.tsx",
+          invalidatedRoot: "apps/web/src/screens/Checkout.tsx",
           dependencyPath: [
             "packages/core/src/index.ts",
             "apps/web/src/components/Button.tsx",
             "apps/web/src/screens/Checkout.tsx"
-          ]
+          ],
+          containmentPath: ["apps/web/src/screens/Checkout.tsx"]
         }
       ]
     }
   ],
   warnings: ["apps/web/src/routes.ts:12 dynamic import target is not statically resolvable"]
-};
+} as unknown as ImpactOutput;
 
 describe("output rendering", () => {
   it("renders stable human-readable text output", () => {
     expect(renderTextOutput(output)).toContain("Changed files:");
     expect(renderTextOutput(output)).toContain("Recommended E2E tests:");
     expect(renderTextOutput(output)).toContain("e2e/checkout.spec.ts");
+    expect(renderTextOutput(output)).toContain("containment path:");
     expect(renderTextOutput(output)).toContain("dynamic import target is not statically resolvable");
   });
 
@@ -50,13 +54,16 @@ describe("output rendering", () => {
           test: "e2e/checkout.spec.ts",
           reasons: [
             {
+              kind: "containment",
               changedFile: "packages/core/src/index.ts",
               declaredTarget: "apps/web/src/screens/Checkout.tsx",
+              invalidatedRoot: "apps/web/src/screens/Checkout.tsx",
               dependencyPath: [
                 "packages/core/src/index.ts",
                 "apps/web/src/components/Button.tsx",
                 "apps/web/src/screens/Checkout.tsx"
-              ]
+              ],
+              containmentPath: ["apps/web/src/screens/Checkout.tsx"]
             }
           ]
         }
