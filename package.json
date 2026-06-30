@@ -1,6 +1,6 @@
 {
   "name": "sniffler",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sniffler sniffs out the E2E tests your changes actually wake up.",
   "license": "MIT",
   "type": "module",
