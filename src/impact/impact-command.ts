@@ -17,6 +17,7 @@ import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
 import { createNodeFileSystem } from "../filesystem/node-filesystem.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import { buildGraph, type GraphNode } from "../graph/build-graph.js";
+import { traverseContainment } from "../graph/traverse-containment.js";
 import { traverseImpact } from "../graph/traverse-impact.js";
 import { renderJsonOutput } from "../output/json-output.js";
 import type { ImpactOutput } from "../output/output-types.js";
@@ -100,6 +101,17 @@ const normalizePlatform = (platform?: string): string | undefined => {
 
 const isGlobTarget = (target: string): boolean => {
   return /[*?]/.test(target);
+};
+
+const matchesPathPattern = (path: string, pattern: string): boolean => {
+  const normalizedPath = normalizePath(path);
+  const normalizedPattern = normalizePath(pattern);
+
+  if (isGlobTarget(pattern)) {
+    return createGlobMatcher(pattern)(normalizedPath);
+  }
+
+  return normalizedPath === normalizedPattern;
 };
 
 const matchesRunAllWhenChanged = (
@@ -517,8 +529,26 @@ export const selectImpact = async (
   const impact = await diagnostics.time("impact.traverse", async () => {
     return await traverseImpact(graph, changedFiles);
   });
+  const invalidateSubtreeWhenTouched = config.tests?.invalidateSubtreeWhenTouched ?? [];
+  const invalidatedRoots = invalidateSubtreeWhenTouched.length === 0
+    ? []
+    : sortUniqueStrings(
+        impact.affectedModules.filter((module) => {
+          return invalidateSubtreeWhenTouched.some((pattern) => matchesPathPattern(module, pattern));
+        })
+      );
+  const containment =
+    invalidatedRoots.length === 0
+      ? undefined
+      : await diagnostics.time("impact.containment.traverse", async () => {
+          return await traverseContainment(graph, invalidatedRoots);
+        });
+  const affectedModules = sortUniqueStrings([
+    ...impact.affectedModules,
+    ...(containment?.affectedModules ?? [])
+  ]);
   diagnostics.record("changedFiles", changedFiles.length);
-  diagnostics.record("affectedModules", impact.affectedModules.length);
+  diagnostics.record("affectedModules", affectedModules.length);
   const testMap = await diagnostics.time("impact.testMap.load", async () => {
     return await loadTestMap(fs, normalizePath(join(cwd, config.tests?.manifest ?? ".sniffler/test-map.json")));
   });
@@ -533,13 +563,13 @@ export const selectImpact = async (
           }))
         };
   const recommendedTests = await diagnostics.time("impact.tests.match", async () => {
-    return matchTests({ testMap: expandedTestMap, impact });
+    return matchTests({ testMap: expandedTestMap, impact, containment });
   });
   diagnostics.record("recommendedTests", recommendedTests.length);
   diagnostics.record("warnings", warnings.length);
   return {
     changedFiles: sortUniqueStrings(changedFiles),
-    affectedModules: sortUniqueStrings(impact.affectedModules),
+    affectedModules,
     recommendedTests,
     warnings: sortUniqueStrings(warnings)
   };

@@ -255,6 +255,18 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
         `Invalid config in ${path}: tests.runAllWhenChanged must be an array of strings.`
       );
     }
+
+    if (
+      "invalidateSubtreeWhenTouched" in value.tests &&
+      value.tests.invalidateSubtreeWhenTouched !== undefined &&
+      !isStringArray(value.tests.invalidateSubtreeWhenTouched)
+    ) {
+      throw createLoadError(
+        "SNIFFLER_INVALID_CONFIG",
+        path,
+        `Invalid config in ${path}: tests.invalidateSubtreeWhenTouched must be an array of strings.`
+      );
+    }
   }
 
   if ("cache" in value && value.cache !== undefined) {
@@ -325,7 +337,9 @@ const normalizeConfig = (config: SnifflerConfigFile): SnifflerConfig => {
     tests: {
       manifest: config.tests?.manifest ?? defaultConfig.tests?.manifest,
       sharedTargets: config.tests?.sharedTargets ?? defaultConfig.tests?.sharedTargets,
-      runAllWhenChanged: config.tests?.runAllWhenChanged ?? defaultConfig.tests?.runAllWhenChanged
+      runAllWhenChanged: config.tests?.runAllWhenChanged ?? defaultConfig.tests?.runAllWhenChanged,
+      invalidateSubtreeWhenTouched:
+        config.tests?.invalidateSubtreeWhenTouched ?? defaultConfig.tests?.invalidateSubtreeWhenTouched
     },
     cache: {
       path: config.cache?.path ?? defaultConfig.cache?.path,

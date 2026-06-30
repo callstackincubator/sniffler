@@ -14,13 +14,33 @@ export const renderJsonOutput = (output: ImpactOutput): string => {
       .map((test) => ({
         test: test.test,
         reasons: [...test.reasons]
-          .sort(compareTestMatchReasons)
-          .map((reason) => ({
-            ...(reason.kind === "run-all" ? { kind: reason.kind } : {}),
+        .sort(compareTestMatchReasons)
+        .map((reason) => {
+          if (reason.kind === "run-all") {
+            return {
+              kind: reason.kind,
+              changedFile: reason.changedFile,
+              declaredTarget: reason.declaredTarget
+            };
+          }
+
+          if (reason.kind === "containment") {
+            return {
+              kind: reason.kind,
+              changedFile: reason.changedFile,
+              declaredTarget: reason.declaredTarget,
+              invalidatedRoot: reason.invalidatedRoot,
+              dependencyPath: [...reason.dependencyPath],
+              containmentPath: [...reason.containmentPath]
+            };
+          }
+
+          return {
             changedFile: reason.changedFile,
             declaredTarget: reason.declaredTarget,
-            ...(reason.kind === "run-all" ? {} : { dependencyPath: [...reason.dependencyPath] })
-          }))
+            dependencyPath: [...reason.dependencyPath]
+          };
+        })
       })),
     warnings: sortUniqueStrings(output.warnings)
   };
