@@ -1,4 +1,5 @@
 import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
+import type { ContainmentResult } from "../graph/traverse-containment.js";
 import type { ImpactResult } from "../graph/traverse-impact.js";
 import type { TestMap } from "./load-test-map.js";
 
@@ -7,20 +8,34 @@ export type MatchedTest = {
   reasons: ReadonlyArray<TestMatchReason>;
 };
 
-export type TestMatchReason = {
+export type DependencyTestMatchReason = {
   kind?: "dependency";
   changedFile: string;
   declaredTarget: string;
   dependencyPath: ReadonlyArray<string>;
-} | {
+};
+
+export type ContainmentTestMatchReason = {
+  kind: "containment";
+  changedFile: string;
+  declaredTarget: string;
+  invalidatedRoot: string;
+  dependencyPath: ReadonlyArray<string>;
+  containmentPath: ReadonlyArray<string>;
+};
+
+export type RunAllTestMatchReason = {
   kind: "run-all";
   changedFile: string;
   declaredTarget: string;
 };
 
+export type TestMatchReason = DependencyTestMatchReason | ContainmentTestMatchReason | RunAllTestMatchReason;
+
 export type MatchTestsInput = {
   testMap: TestMap;
   impact: ImpactResult;
+  containment?: ContainmentResult;
 };
 
 const isGlobTarget = (target: string): boolean => {
@@ -32,7 +47,15 @@ const getReasonPathLength = (reason: TestMatchReason): number => {
 };
 
 const getReasonKindRank = (reason: TestMatchReason): number => {
-  return reason.kind === "run-all" ? 1 : 0;
+  if (reason.kind === "run-all") {
+    return 2;
+  }
+
+  if (reason.kind === "containment") {
+    return 1;
+  }
+
+  return 0;
 };
 
 const getReasonDependencyPath = (reason: TestMatchReason): ReadonlyArray<string> => {
@@ -67,14 +90,30 @@ export const compareTestMatchReasons = (left: TestMatchReason, right: TestMatchR
     return targetComparison;
   }
 
+  if (left.kind === "containment" && right.kind === "containment") {
+    const invalidatedRootComparison = left.invalidatedRoot.localeCompare(right.invalidatedRoot);
+    if (invalidatedRootComparison !== 0) {
+      return invalidatedRootComparison;
+    }
+  }
+
   return getReasonDependencyPath(left).join("\u0000").localeCompare(getReasonDependencyPath(right).join("\u0000"));
 };
 
-export const matchTests = ({ testMap, impact }: MatchTestsInput): Array<MatchedTest> => {
+export const matchTests = ({ testMap, impact, containment }: MatchTestsInput): Array<MatchedTest> => {
   const pathsByModule = new Map<string, ReadonlyArray<string>>();
 
   for (const path of impact.paths) {
     pathsByModule.set(normalizePath(path.module), path.path);
+  }
+
+  const containmentPathsByModule = new Map<string, { invalidatedRoot: string; path: ReadonlyArray<string> }>();
+
+  for (const path of containment?.paths ?? []) {
+    containmentPathsByModule.set(normalizePath(path.module), {
+      invalidatedRoot: normalizePath(path.invalidatedRoot),
+      path: path.path
+    });
   }
 
   const matchedTests: MatchedTest[] = [];
@@ -105,6 +144,44 @@ export const matchTests = ({ testMap, impact }: MatchTestsInput): Array<MatchedT
           reason.changedFile,
           reason.declaredTarget,
           ...reason.dependencyPath
+        ].join("\u0000");
+
+        if (seenReasons.has(reasonKey)) {
+          continue;
+        }
+
+        seenReasons.add(reasonKey);
+        reasons.push(reason);
+      }
+
+      for (const [module, containmentPath] of containmentPathsByModule) {
+        const matched = matcher === null ? module === normalizedTarget : matcher(module);
+
+        if (!matched) {
+          continue;
+        }
+
+        const dependencyPath = pathsByModule.get(containmentPath.invalidatedRoot);
+
+        if (dependencyPath === undefined) {
+          continue;
+        }
+
+        const reason: ContainmentTestMatchReason = {
+          kind: "containment",
+          changedFile: dependencyPath[0] ?? containmentPath.invalidatedRoot,
+          declaredTarget: target,
+          invalidatedRoot: containmentPath.invalidatedRoot,
+          dependencyPath,
+          containmentPath: containmentPath.path
+        };
+        const reasonKey = [
+          reason.kind,
+          reason.changedFile,
+          reason.declaredTarget,
+          reason.invalidatedRoot,
+          ...reason.dependencyPath,
+          ...reason.containmentPath
         ].join("\u0000");
 
         if (seenReasons.has(reasonKey)) {

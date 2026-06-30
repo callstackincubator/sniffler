@@ -50,6 +50,35 @@ const testMap: TestMap = [
   }
 ];
 
+const containmentImpact: any = {
+  affectedModules: ["src/shared.ts", "src/feature.ts", "src/App.tsx", "src/screens/Checkout.tsx"],
+  paths: [
+    {
+      module: "src/feature.ts",
+      invalidatedRoot: "src/App.tsx",
+      path: ["src/App.tsx", "src/feature.ts"]
+    },
+    {
+      module: "src/screens/Checkout.tsx",
+      invalidatedRoot: "src/App.tsx",
+      path: ["src/App.tsx", "src/screens/Checkout.tsx"]
+    }
+  ]
+};
+
+const containmentTestMap: TestMap = {
+  tests: [
+    {
+      test: "alpha.spec.ts",
+      targets: ["src/feature.ts"]
+    },
+    {
+      test: "zeta.spec.ts",
+      targets: ["src/screens/Checkout.tsx"]
+    }
+  ]
+};
+
 describe("matchTests", () => {
   it("matches exact and glob targets with shortest dependency paths", () => {
     expect(matchTests({ testMap, impact })).toEqual([
@@ -93,6 +122,60 @@ describe("matchTests", () => {
               "apps/web/src/screens/Checkout.tsx",
               "apps/web/src/screens/Order.tsx"
             ]
+          }
+        ]
+      }
+    ]);
+  });
+
+  it("adds containment reasons when a touched root invalidates a subtree", () => {
+    const containmentInput = {
+      testMap: containmentTestMap,
+      impact: {
+        affectedModules: ["src/shared.ts", "src/feature.ts", "src/App.tsx"],
+        paths: [
+          {
+            module: "src/feature.ts",
+            path: ["src/shared.ts", "src/feature.ts"]
+          },
+          {
+            module: "src/App.tsx",
+            path: ["src/shared.ts", "src/feature.ts", "src/App.tsx"]
+          }
+        ]
+      },
+      containment: containmentImpact
+    } as any;
+
+    expect(matchTests(containmentInput)).toEqual([
+      {
+        test: "alpha.spec.ts",
+        reasons: [
+          {
+            changedFile: "src/shared.ts",
+            declaredTarget: "src/feature.ts",
+            dependencyPath: ["src/shared.ts", "src/feature.ts"]
+          },
+          {
+            kind: "containment",
+            changedFile: "src/shared.ts",
+            declaredTarget: "src/feature.ts",
+            invalidatedRoot: "src/App.tsx",
+            dependencyPath: ["src/shared.ts", "src/feature.ts", "src/App.tsx"],
+            containmentPath: ["src/App.tsx", "src/feature.ts"]
+          }
+        ]
+      },
+      {
+        test: "zeta.spec.ts",
+        reasons: [
+          {
+            kind: "containment",
+            changedFile: "src/shared.ts",
+            declaredTarget: "src/screens/Checkout.tsx",
+            invalidatedRoot: "src/App.tsx",
+            dependencyPath: ["src/shared.ts", "src/feature.ts", "src/App.tsx"],
+            containmentPath: ["src/App.tsx", "src/screens/Checkout.tsx"]
           }
         ]
       }

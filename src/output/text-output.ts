@@ -55,6 +55,15 @@ export const renderTextOutput = (output: ImpactOutput): string => {
           continue;
         }
 
+        if (reason.kind === "containment") {
+          lines.push(`    containment target: ${reason.declaredTarget}`);
+          lines.push(`    changed: ${reason.changedFile}`);
+          lines.push(`    invalidated root: ${reason.invalidatedRoot}`);
+          lines.push(`    reverse path: ${formatPath(reason.dependencyPath)}`);
+          lines.push(`    containment path: ${formatPath(reason.containmentPath)}`);
+          continue;
+        }
+
         lines.push(`    target: ${reason.declaredTarget}`);
         lines.push(`    path: ${formatPath(reason.dependencyPath)}`);
       }

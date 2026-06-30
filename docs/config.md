@@ -67,7 +67,8 @@ Every property is optional. Missing properties are filled from the defaults belo
   "tests": {
     "manifest": ".sniffler/test-map.json",
     "sharedTargets": [],
-    "runAllWhenChanged": []
+    "runAllWhenChanged": [],
+    "invalidateSubtreeWhenTouched": []
   },
   "cache": {
     "path": ".sniffler/cache.json",
@@ -103,6 +104,7 @@ type SnifflerConfig = {
     manifest?: string;
     sharedTargets?: string[];
     runAllWhenChanged?: string[];
+    invalidateSubtreeWhenTouched?: string[];
   };
   cache?: {
     path?: string;
@@ -365,6 +367,28 @@ Use this for repo-level files like lockfiles:
 
 When a changed file matches one of these rules, Sniffler short-circuits before workspace discovery, TSConfig loading, source discovery, scan, graph build, traversal, and cache load/save. It still loads the test map and returns every test with a run-all reason.
 
+### `tests.invalidateSubtreeWhenTouched`
+
+Paths or globs that make Sniffler treat a touched module as a subtree root. After normal reverse dependency traversal finishes, if one of the affected modules matches one of these rules, Sniffler walks forward through the graph from that root and selects tests whose declared targets are reachable from it.
+
+Default:
+
+```json
+[]
+```
+
+Use this for explicit containment roots like app shells or route containers:
+
+```json
+{
+  "tests": {
+    "invalidateSubtreeWhenTouched": ["src/App.tsx", "src/screens/**/App.tsx"]
+  }
+}
+```
+
+Containment only follows static graph edges. Sniffler does not infer router relationships or other file associations beyond what the import graph already knows.
+
 ### `cache.path`
 
 Path where Sniffler stores graph cache data.
@@ -471,7 +495,10 @@ sniffler impact --format json --base origin/main --head HEAD
     }
   },
   "tests": {
-    "manifest": ".sniffler/test-map.json"
+    "manifest": ".sniffler/test-map.json",
+    "sharedTargets": [],
+    "runAllWhenChanged": [],
+    "invalidateSubtreeWhenTouched": []
   },
   "cache": {
     "path": ".sniffler/cache.json",

@@ -66,6 +66,8 @@ Sniffler fills in defaults for source extensions, workspace discovery, TSConfig 
 
 If you have a shared setup module that reaches into the rest of the app, add it under `tests.sharedTargets` so Sniffler still walks the dependency graph from that module into its imports. For example, when `src/global.ts` imports `src/some-other.ts`, a change to `src/some-other.ts` can still select every test that shares `src/global.ts`.
 
+If a module should invalidate its descendants when touched, add it under `tests.invalidateSubtreeWhenTouched`. Sniffler first finds the usual reverse dependency impact, then starts a forward walk from any touched module that matches one of those paths or globs. That keeps containment explicit and still grounded in the import graph.
+
 If a lockfile or other repo-level file should force every test, add `tests.runAllWhenChanged`:
 
 ```json
