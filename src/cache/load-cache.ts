@@ -30,6 +30,14 @@ const isEntitySelection = (value: unknown): boolean => {
   );
 };
 
+const isSyntheticEdge = (value: unknown): boolean => {
+  if (!isRecord(value) || value.kind !== "containment") {
+    return false;
+  }
+
+  return typeof value.from === "string" && typeof value.to === "string";
+};
+
 const isResolvedEdge = (value: unknown): value is ResolvedEdge => {
   const reExportsIsValid =
     value !== null &&
@@ -49,7 +57,8 @@ const isResolvedEdge = (value: unknown): value is ResolvedEdge => {
     typeof value.to === "string" &&
     typeof value.resolver === "string" &&
     isEntitySelection(value.entities) &&
-    reExportsIsValid
+    reExportsIsValid &&
+    ("synthetic" in value ? value.synthetic === undefined || isSyntheticEdge(value.synthetic) : true)
   );
 };
 

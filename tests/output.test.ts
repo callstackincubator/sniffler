@@ -24,7 +24,18 @@ const output = {
             "apps/web/src/components/Button.tsx",
             "apps/web/src/screens/Checkout.tsx"
           ],
-          containmentPath: ["apps/web/src/screens/Checkout.tsx"]
+          containmentPath: ["apps/web/src/screens/Checkout.tsx"],
+          containmentPathEdges: [
+            {
+              from: "apps/web/src/components/Button.tsx",
+              to: "apps/web/src/screens/Checkout.tsx",
+              synthetic: {
+                kind: "containment",
+                from: "apps/web/src/components/Button.tsx",
+                to: "apps/web/src/screens/Checkout.tsx"
+              }
+            }
+          ]
         }
       ]
     }
@@ -38,6 +49,7 @@ describe("output rendering", () => {
     expect(renderTextOutput(output)).toContain("Recommended E2E tests:");
     expect(renderTextOutput(output)).toContain("e2e/checkout.spec.ts");
     expect(renderTextOutput(output)).toContain("containment path:");
+    expect(renderTextOutput(output)).toContain("synthetic containment");
     expect(renderTextOutput(output)).toContain("dynamic import target is not statically resolvable");
   });
 
@@ -53,20 +65,31 @@ describe("output rendering", () => {
         {
           test: "e2e/checkout.spec.ts",
           reasons: [
-            {
-              kind: "containment",
-              changedFile: "packages/core/src/index.ts",
-              declaredTarget: "apps/web/src/screens/Checkout.tsx",
-              invalidatedRoot: "apps/web/src/screens/Checkout.tsx",
-              dependencyPath: [
-                "packages/core/src/index.ts",
-                "apps/web/src/components/Button.tsx",
-                "apps/web/src/screens/Checkout.tsx"
-              ],
-              containmentPath: ["apps/web/src/screens/Checkout.tsx"]
-            }
-          ]
-        }
+          {
+            kind: "containment",
+            changedFile: "packages/core/src/index.ts",
+            declaredTarget: "apps/web/src/screens/Checkout.tsx",
+            invalidatedRoot: "apps/web/src/screens/Checkout.tsx",
+            dependencyPath: [
+              "packages/core/src/index.ts",
+              "apps/web/src/components/Button.tsx",
+              "apps/web/src/screens/Checkout.tsx"
+            ],
+            containmentPath: ["apps/web/src/screens/Checkout.tsx"],
+            containmentPathEdges: [
+              {
+                from: "apps/web/src/components/Button.tsx",
+                to: "apps/web/src/screens/Checkout.tsx",
+                synthetic: {
+                  kind: "containment",
+                  from: "apps/web/src/components/Button.tsx",
+                  to: "apps/web/src/screens/Checkout.tsx"
+                }
+              }
+            ]
+          }
+        ]
+      }
       ],
       warnings: ["apps/web/src/routes.ts:12 dynamic import target is not statically resolvable"]
     });

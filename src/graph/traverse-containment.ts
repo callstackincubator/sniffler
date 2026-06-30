@@ -2,10 +2,17 @@ import { normalizePath } from "../filesystem/path-utils.js";
 import type { DependencyGraph } from "./build-graph.js";
 import type { ResolvedEdge } from "../cache/cache-types.js";
 
+export type ContainmentPathEdge = {
+  from: string;
+  to: string;
+  synthetic?: ResolvedEdge["synthetic"];
+};
+
 export type ContainmentPath = {
   module: string;
   invalidatedRoot: string;
   path: ReadonlyArray<string>;
+  containmentPathEdges?: ReadonlyArray<ContainmentPathEdge>;
 };
 
 export type ContainmentResult = {
@@ -22,6 +29,7 @@ type QueueEntry = {
   module: string;
   path: ReadonlyArray<string>;
   root: string;
+  edges: ReadonlyArray<ContainmentPathEdge>;
 };
 
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
@@ -68,7 +76,8 @@ export const traverseContainment = async (
       bestPaths.set(entry.module, {
         module: entry.module,
         invalidatedRoot: entry.root,
-        path: entry.path
+        path: entry.path,
+        containmentPathEdges: entry.edges
       });
       return true;
     }
@@ -77,7 +86,8 @@ export const traverseContainment = async (
       bestPaths.set(entry.module, {
         module: entry.module,
         invalidatedRoot: entry.root,
-        path: entry.path
+        path: entry.path,
+        containmentPathEdges: entry.edges
       });
       return true;
     }
@@ -93,7 +103,8 @@ export const traverseContainment = async (
       bestPaths.set(entry.module, {
         module: entry.module,
         invalidatedRoot: entry.root,
-        path: entry.path
+        path: entry.path,
+        containmentPathEdges: entry.edges
       });
       return true;
     }
@@ -104,7 +115,8 @@ export const traverseContainment = async (
   let frontier: Array<QueueEntry> = sortUniqueStrings(invalidatedRoots.map((path) => normalizePath(path))).map((root) => ({
       module: root,
       path: [root],
-      root
+      root,
+      edges: []
     }));
 
   while (frontier.length > 0) {
@@ -140,7 +152,15 @@ export const traverseContainment = async (
         nextFrontier.push({
           module: edge.to,
           path: [...current.path, edge.to],
-          root: current.root
+          root: current.root,
+          edges: [
+            ...current.edges,
+            {
+              from: current.module,
+              to: edge.to,
+              ...(edge.edge.synthetic === undefined ? {} : { synthetic: edge.edge.synthetic })
+            }
+          ]
         });
       }
     }

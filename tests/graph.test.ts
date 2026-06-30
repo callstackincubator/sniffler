@@ -462,4 +462,155 @@ describe("graph traversal", () => {
     expect(graph.edges).toHaveLength(3);
     expect(statCalls).toBe(1);
   });
+
+  it("expands synthetic containment edges, dedupes overlaps, and keeps reverse impact conservative", async () => {
+    const graph = await buildGraph(
+      [
+        {
+          path: "app/_layout.tsx",
+          scan: scanFileText({
+            filePath: "app/_layout.tsx",
+            text: "export const layout = true;"
+          })
+        },
+        {
+          path: "app/(tabs)/_layout.tsx",
+          scan: scanFileText({
+            filePath: "app/(tabs)/_layout.tsx",
+            text: "export const tabsLayout = true;"
+          })
+        },
+        {
+          path: "app/(tabs)/home.tsx",
+          scan: scanFileText({
+            filePath: "app/(tabs)/home.tsx",
+            text: "export const home = true;"
+          })
+        },
+        {
+          path: "app/home.tsx",
+          scan: scanFileText({
+            filePath: "app/home.tsx",
+            text: "export const home = true;"
+          })
+        }
+      ],
+      {
+        graph: {
+          contains: [
+            {
+              from: "app/_layout.tsx",
+              to: "app/**/*.tsx"
+            },
+            {
+              from: "app/**/*.tsx",
+              to: "app/(tabs)/**/*.tsx"
+            }
+          ]
+        }
+      } as any
+    );
+
+    const expectedSyntheticEdges = [
+      {
+        from: "app/(tabs)/_layout.tsx",
+        to: "app/(tabs)/home.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/(tabs)/_layout.tsx",
+          to: "app/(tabs)/home.tsx"
+        }
+      },
+      {
+        from: "app/(tabs)/home.tsx",
+        to: "app/(tabs)/_layout.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/(tabs)/home.tsx",
+          to: "app/(tabs)/_layout.tsx"
+        }
+      },
+      {
+        from: "app/_layout.tsx",
+        to: "app/(tabs)/_layout.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/_layout.tsx",
+          to: "app/(tabs)/_layout.tsx"
+        }
+      },
+      {
+        from: "app/_layout.tsx",
+        to: "app/(tabs)/home.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/_layout.tsx",
+          to: "app/(tabs)/home.tsx"
+        }
+      },
+      {
+        from: "app/_layout.tsx",
+        to: "app/home.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/_layout.tsx",
+          to: "app/home.tsx"
+        }
+      },
+      {
+        from: "app/home.tsx",
+        to: "app/(tabs)/_layout.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/home.tsx",
+          to: "app/(tabs)/_layout.tsx"
+        }
+      },
+      {
+        from: "app/home.tsx",
+        to: "app/(tabs)/home.tsx",
+        resolver: "synthetic:containment",
+        entities: { type: "all" },
+        reExports: null,
+        synthetic: {
+          kind: "containment",
+          from: "app/home.tsx",
+          to: "app/(tabs)/home.tsx"
+        }
+      }
+    ];
+
+    expect(graph.edges).toHaveLength(expectedSyntheticEdges.length);
+    expect(graph.edges.every((edge) => edge.from !== edge.to)).toBe(true);
+    expect(new Set(graph.edges.map((edge) => JSON.stringify(edge))).size).toBe(expectedSyntheticEdges.length);
+    expect(graph.edges).toEqual(expect.arrayContaining(expectedSyntheticEdges));
+
+    expect(await traverseImpact(graph, ["app/home.tsx"])).toEqual({
+      affectedModules: ["app/home.tsx"],
+      paths: [
+        {
+          module: "app/home.tsx",
+          path: ["app/home.tsx"]
+        }
+      ]
+    });
+  });
 });

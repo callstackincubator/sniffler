@@ -59,6 +59,23 @@ const isStringArray = (value: unknown): value is ReadonlyArray<string> => {
   return Array.isArray(value) && value.every(isString);
 };
 
+const isGraphContainmentRuleArray = (
+  value: unknown
+): value is ReadonlyArray<{
+  from: string;
+  to: string;
+}> => {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        isString(entry.from) &&
+        isString(entry.to)
+    )
+  );
+};
+
 const isWorkspaceStrategyArray = (value: unknown): value is ReadonlyArray<SnifflerWorkspaceStrategy> => {
   return (
     Array.isArray(value) &&
@@ -137,6 +154,28 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
         "SNIFFLER_INVALID_CONFIG",
         path,
         `Invalid config in ${path}: source.includeNodeModules must be a boolean.`
+      );
+    }
+  }
+
+  if ("graph" in value && value.graph !== undefined) {
+    if (!isRecord(value.graph)) {
+      throw createLoadError(
+        "SNIFFLER_INVALID_CONFIG",
+        path,
+        `Invalid config in ${path}: graph must be an object when present.`
+      );
+    }
+
+    if (
+      "contains" in value.graph &&
+      value.graph.contains !== undefined &&
+      !isGraphContainmentRuleArray(value.graph.contains)
+    ) {
+      throw createLoadError(
+        "SNIFFLER_INVALID_CONFIG",
+        path,
+        `Invalid config in ${path}: graph.contains must be an array of { from, to } objects.`
       );
     }
   }
@@ -323,6 +362,9 @@ const normalizeConfig = (config: SnifflerConfigFile): SnifflerConfig => {
       extensions: config.source?.extensions ?? defaultConfig.source?.extensions,
       ignore: config.source?.ignore ?? defaultConfig.source?.ignore,
       includeNodeModules: config.source?.includeNodeModules ?? defaultConfig.source?.includeNodeModules
+    },
+    graph: {
+      contains: config.graph?.contains ?? defaultConfig.graph?.contains
     },
     workspaces: {
       strategies: config.workspaces?.strategies ?? defaultConfig.workspaces?.strategies

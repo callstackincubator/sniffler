@@ -1,5 +1,5 @@
 import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
-import type { ContainmentResult } from "../graph/traverse-containment.js";
+import type { ContainmentPathEdge, ContainmentResult } from "../graph/traverse-containment.js";
 import type { ImpactResult } from "../graph/traverse-impact.js";
 import type { TestMap } from "./load-test-map.js";
 
@@ -22,6 +22,7 @@ export type ContainmentTestMatchReason = {
   invalidatedRoot: string;
   dependencyPath: ReadonlyArray<string>;
   containmentPath: ReadonlyArray<string>;
+  containmentPathEdges?: ReadonlyArray<ContainmentPathEdge>;
 };
 
 export type RunAllTestMatchReason = {
@@ -107,12 +108,23 @@ export const matchTests = ({ testMap, impact, containment }: MatchTestsInput): A
     pathsByModule.set(normalizePath(path.module), path.path);
   }
 
-  const containmentPathsByModule = new Map<string, { invalidatedRoot: string; path: ReadonlyArray<string> }>();
+  const containmentPathsByModule = new Map<
+    string,
+    {
+      invalidatedRoot: string;
+      path: ReadonlyArray<string>;
+      containmentPathEdges?: ReadonlyArray<ContainmentPathEdge>;
+    }
+  >();
 
   for (const path of containment?.paths ?? []) {
     containmentPathsByModule.set(normalizePath(path.module), {
       invalidatedRoot: normalizePath(path.invalidatedRoot),
-      path: path.path
+      path: path.path,
+      ...(path.containmentPathEdges !== undefined &&
+      path.containmentPathEdges.some((edge) => edge.synthetic !== undefined)
+        ? { containmentPathEdges: path.containmentPathEdges }
+        : {})
     });
   }
 
@@ -173,7 +185,10 @@ export const matchTests = ({ testMap, impact, containment }: MatchTestsInput): A
           declaredTarget: target,
           invalidatedRoot: containmentPath.invalidatedRoot,
           dependencyPath,
-          containmentPath: containmentPath.path
+          containmentPath: containmentPath.path,
+          ...(containmentPath.containmentPathEdges === undefined
+            ? {}
+            : { containmentPathEdges: containmentPath.containmentPathEdges })
         };
         const reasonKey = [
           reason.kind,

@@ -77,6 +77,47 @@ describe("cache", () => {
     );
   });
 
+  it("changes the config hash when graph containment changes", () => {
+    const sharedConfig = {
+      source: {
+        roots: ["src"],
+        extensions: [".ts"],
+        ignore: []
+      },
+      workspaces: {
+        strategies: []
+      },
+      resolver: {
+        tsconfig: "tsconfig.json",
+        conditions: {
+          import: ["import", "node", "default"],
+          require: ["require", "node", "default"]
+        }
+      }
+    };
+
+    expect(
+      getCacheConfigHash({
+        ...sharedConfig,
+        graph: {
+          contains: []
+        }
+      } as any)
+    ).not.toBe(
+      getCacheConfigHash({
+        ...sharedConfig,
+        graph: {
+          contains: [
+            {
+              from: "app/_layout.tsx",
+              to: "app/**/*.tsx"
+            }
+          ]
+        }
+      } as any)
+    );
+  });
+
   it("loads a valid cache when the expected hashes match", async () => {
     const fs = createMemoryFileSystem({
       ".sniffler/cache.json": JSON.stringify(validCache)

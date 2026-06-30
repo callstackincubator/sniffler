@@ -184,4 +184,73 @@ describe("containment impact", () => {
       ])
     );
   });
+
+  it("uses source roots and synthetic containment edges for Expo Router app layouts", async () => {
+    const fs = createMemoryFileSystem({
+      ".sniffler/config.json": JSON.stringify({
+        source: {
+          roots: ["src", "app"],
+          extensions: [".ts", ".tsx"],
+          ignore: []
+        },
+        graph: {
+          contains: [
+            {
+              from: "app/_layout.tsx",
+              to: "app/**/*.tsx"
+            }
+          ]
+        },
+        workspaces: {
+          strategies: []
+        },
+        tests: {
+          manifest: ".sniffler/test-map.json",
+          invalidateSubtreeWhenTouched: ["app/_layout.tsx"]
+        }
+      }),
+      ".sniffler/test-map.json": JSON.stringify({
+        tests: [
+          {
+            test: "e2e/home.spec.ts",
+            targets: ["app/home.tsx"]
+          }
+        ]
+      }),
+      "app/_layout.tsx": "export const layout = true;",
+      "app/home.tsx": "export const home = true;",
+      "src/unused.ts": "export const unused = true;"
+    });
+
+    const result = await selectImpact({ changedFiles: ["app/_layout.tsx"] }, { fs, cwd: "." });
+
+    expect(result.changedFiles).toEqual(["app/_layout.tsx"]);
+    expect(result.affectedModules).toEqual(["app/_layout.tsx", "app/home.tsx"]);
+    expect(result.recommendedTests).toEqual([
+      {
+        test: "e2e/home.spec.ts",
+        reasons: [
+          {
+            kind: "containment",
+            changedFile: "app/_layout.tsx",
+            declaredTarget: "app/home.tsx",
+            invalidatedRoot: "app/_layout.tsx",
+            dependencyPath: ["app/_layout.tsx"],
+            containmentPath: ["app/_layout.tsx", "app/home.tsx"],
+            containmentPathEdges: [
+              {
+                from: "app/_layout.tsx",
+                to: "app/home.tsx",
+                synthetic: {
+                  kind: "containment",
+                  from: "app/_layout.tsx",
+                  to: "app/home.tsx"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]);
+  });
 });

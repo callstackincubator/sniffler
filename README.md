@@ -68,6 +68,8 @@ If you have a shared setup module that reaches into the rest of the app, add it 
 
 If a module should invalidate its descendants when touched, add it under `tests.invalidateSubtreeWhenTouched`. Sniffler first finds the usual reverse dependency impact, then starts a forward walk from any touched module that matches one of those paths or globs. That keeps containment explicit and still grounded in the import graph.
 
+If your router or app shell composes files through runtime conventions, include those files in `source.roots` and describe subtree relationships with `graph.contains`. Sniffler will add synthetic containment edges and show synthetic hops in impact output when they drive a test selection.
+
 If a lockfile or other repo-level file should force every test, add `tests.runAllWhenChanged`:
 
 ```json

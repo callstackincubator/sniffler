@@ -203,6 +203,10 @@ export const traverseImpact = async (
   const queued = new Set<string>();
 
   for (const edge of graph.edges) {
+    if (edge.synthetic?.kind === "containment") {
+      continue;
+    }
+
     const importer = normalizePath(edge.from);
     const imported = normalizePath(edge.to);
     const bucket = reverseEdges.get(imported);
