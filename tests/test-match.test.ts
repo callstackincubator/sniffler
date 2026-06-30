@@ -66,18 +66,16 @@ const containmentImpact: any = {
   ]
 };
 
-const containmentTestMap: TestMap = {
-  tests: [
-    {
-      test: "alpha.spec.ts",
-      targets: ["src/feature.ts"]
-    },
-    {
-      test: "zeta.spec.ts",
-      targets: ["src/screens/Checkout.tsx"]
-    }
-  ]
-};
+const containmentTestMap: TestMap = [
+  {
+    test: "alpha.spec.ts",
+    dependsOn: ["src/feature.ts"]
+  },
+  {
+    test: "zeta.spec.ts",
+    dependsOn: ["src/screens/Checkout.tsx"]
+  }
+];
 
 describe("matchTests", () => {
   it("matches exact and glob targets with shortest dependency paths", () => {
