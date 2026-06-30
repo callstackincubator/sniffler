@@ -54,6 +54,9 @@ Every property is optional. Missing properties are filled from the defaults belo
     "ignore": [],
     "includeNodeModules": false
   },
+  "graph": {
+    "contains": []
+  },
   "workspaces": {
     "strategies": ["package-json", "pnpm-workspace"]
   },
@@ -89,6 +92,12 @@ type SnifflerConfig = {
     extensions?: string[];
     ignore?: string[];
     includeNodeModules?: boolean;
+  };
+  graph?: {
+    contains?: Array<{
+      from: string;
+      to: string;
+    }>;
   };
   workspaces?: {
     strategies?: Array<"package-json" | "pnpm-workspace">;
@@ -207,6 +216,31 @@ Leave this off for normal projects so dependency trees are never scanned by defa
 ```
 
 This setting controls Sniffler's built-in traversal policy. `source.ignore` still applies as a separate project filter.
+
+### `graph.contains`
+
+Synthetic containment edges Sniffler adds on top of the import graph.
+
+Default:
+
+```json
+[]
+```
+
+Each rule links every source-discovered `from` match to every source-discovered `to` match, after exact and glob expansion. Include router files in `source.roots` before using them in containment rules:
+
+```json
+{
+  "graph": {
+    "contains": [
+      { "from": "app/_layout.tsx", "to": "app/**/*.tsx" },
+      { "from": "app/(tabs)/_layout.tsx", "to": "app/(tabs)/**/*.tsx" }
+    ]
+  }
+}
+```
+
+These synthetic edges are forward-only. They help containment traversal walk into selected subtrees, but reverse dependency traversal still follows real import/export edges only.
 
 ### `workspaces.strategies`
 
@@ -480,9 +514,14 @@ sniffler impact --format json --base origin/main --head HEAD
 {
   "$schema": "https://sniffler.dev/schema/config.v1.json",
   "source": {
-    "roots": ["apps", "packages"],
+    "roots": ["apps", "packages", "app"],
     "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
     "ignore": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/dist/**"]
+  },
+  "graph": {
+    "contains": [
+      { "from": "app/_layout.tsx", "to": "app/**/*.tsx" }
+    ]
   },
   "workspaces": {
     "strategies": ["package-json", "pnpm-workspace"]

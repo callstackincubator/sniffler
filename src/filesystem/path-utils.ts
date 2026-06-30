@@ -39,8 +39,13 @@ export const createGlobMatcher = (pattern: string): ((path: string) => boolean) 
 
     if (char === "*") {
       if (normalizedPattern[index + 1] === "*") {
-        regex += ".*";
-        index += 1;
+        if (normalizedPattern[index + 2] === "/") {
+          regex += "(?:.*/)?";
+          index += 2;
+        } else {
+          regex += ".*";
+          index += 1;
+        }
       } else {
         regex += "[^/]*";
       }

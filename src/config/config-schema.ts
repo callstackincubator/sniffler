@@ -5,6 +5,12 @@ export type SnifflerConfig = {
     ignore?: ReadonlyArray<string>;
     includeNodeModules?: boolean;
   };
+  graph?: {
+    contains?: ReadonlyArray<{
+      from: string;
+      to: string;
+    }>;
+  };
   workspaces?: {
     strategies?: ReadonlyArray<"package-json" | "pnpm-workspace">;
   };
@@ -30,6 +36,8 @@ export type SnifflerConfig = {
   };
 };
 
+export type SnifflerGraphConfig = NonNullable<SnifflerConfig["graph"]>;
+
 export type SnifflerConfigFile = SnifflerConfig & {
   $schema?: string;
 };
@@ -42,6 +50,9 @@ export const defaultConfig = {
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
     ignore: [],
     includeNodeModules: false
+  },
+  graph: {
+    contains: []
   },
   workspaces: {
     strategies: ["package-json", "pnpm-workspace"]

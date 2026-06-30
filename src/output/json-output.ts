@@ -31,7 +31,16 @@ export const renderJsonOutput = (output: ImpactOutput): string => {
               declaredTarget: reason.declaredTarget,
               invalidatedRoot: reason.invalidatedRoot,
               dependencyPath: [...reason.dependencyPath],
-              containmentPath: [...reason.containmentPath]
+              containmentPath: [...reason.containmentPath],
+              ...(reason.containmentPathEdges === undefined
+                ? {}
+                : {
+                    containmentPathEdges: reason.containmentPathEdges.map((edge) => ({
+                      from: edge.from,
+                      to: edge.to,
+                      ...(edge.synthetic === undefined ? {} : { synthetic: edge.synthetic })
+                    }))
+                  })
             };
           }
 

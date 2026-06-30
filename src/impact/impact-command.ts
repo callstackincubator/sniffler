@@ -186,32 +186,32 @@ const discoverSourceFiles = async (
   const extensions = config.source?.extensions ?? [];
   const ignorePatterns = config.source?.ignore ?? [];
 
+  const pruneDirectories = config.source?.includeNodeModules === true ? [] : ["node_modules"];
+
   if (roots.length === 0 || extensions.length === 0) {
     return [];
   }
 
-  const includePatterns = sortUniqueStrings(
-    roots.flatMap((root) => {
-      const normalizedRoot = normalizePath(root);
-      const rootPrefix = normalizedRoot === "." ? "" : `${normalizedRoot}/`;
+  return (
+    await fs.glob(
+      sortUniqueStrings(
+        roots.flatMap((root) => {
+          const normalizedRoot = normalizePath(root);
+          const rootPrefix = normalizedRoot === "." ? "" : `${normalizedRoot}/`;
 
-      return extensions.map((extension) => `${rootPrefix}**/*${extension}`);
-    })
-  );
-  const pruneDirectories = config.source?.includeNodeModules === true ? [] : ["node_modules"];
-
-  const discovered = (
-    await fs.glob(includePatterns, {
-      cwd,
-      dot: true,
-      ignore: ignorePatterns,
-      pruneDirectories
-    })
+          return extensions.map((extension) => `${rootPrefix}**/*${extension}`);
+        })
+      ),
+      {
+        cwd,
+        dot: true,
+        ignore: ignorePatterns,
+        pruneDirectories
+      }
+    )
   )
     .map((path) => normalizePath(path))
     .sort((left, right) => left.localeCompare(right));
-
-  return discovered;
 };
 
 const loadTsconfigPaths = async (
@@ -470,11 +470,12 @@ export const selectImpact = async (
   const stagedEntries = cacheStore.entries();
 
   const graph = await diagnostics.time("impact.graph.build", async () => {
-    return await buildGraph(graphNodes, {
-      diagnostics,
-      resolveContext: {
-        fs,
-        workspacePackages,
+      return await buildGraph(graphNodes, {
+        diagnostics,
+        graph: config.graph,
+        resolveContext: {
+          fs,
+          workspacePackages,
         sourceExtensions: config.source?.extensions,
         platform,
         tsconfigPaths,

@@ -1,7 +1,8 @@
 import type { ResolvedEdge } from "../cache/cache-types.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
-import { normalizePath } from "../filesystem/path-utils.js";
+import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
 import { noopDiagnostics, type Diagnostics } from "../diagnostics/diagnostics.js";
+import type { SnifflerGraphConfig } from "../config/config-schema.js";
 import { relativeResolver } from "../resolvers/relative-resolver.js";
 import {
   compileTsconfigPathsConfig,
@@ -39,6 +40,7 @@ export type DependencyGraph = {
 
 export type BuildGraphInput = {
   diagnostics?: Diagnostics;
+  graph?: SnifflerGraphConfig;
   resolveContext?: ResolveContext;
 };
 
@@ -48,6 +50,84 @@ const resolvers = [
   packageExportsResolver,
   workspacePackageResolver
 ] as const;
+
+const isGlobTarget = (target: string): boolean => {
+  return /[*?]/.test(target);
+};
+
+const getSyntheticContainmentEdgeKey = (edge: ResolvedEdge): string => {
+  return JSON.stringify({
+    from: edge.from,
+    to: edge.to,
+    resolver: edge.resolver,
+    entities: edge.entities,
+    reExports: edge.reExports,
+    synthetic: edge.synthetic ?? null
+  });
+};
+
+const expandSyntheticContainmentEdges = (
+  graphVisiblePaths: ReadonlyArray<string>,
+  graphConfig: SnifflerGraphConfig | undefined,
+  existingEdges: ReadonlyArray<ResolvedEdge>
+): Array<ResolvedEdge> => {
+  const rules = graphConfig?.contains ?? [];
+
+  if (rules.length === 0 || graphVisiblePaths.length === 0) {
+    return [];
+  }
+
+  const visibleSet = new Set(graphVisiblePaths.map((path) => normalizePath(path)));
+  const syntheticEdges: ResolvedEdge[] = [];
+  const syntheticEdgeKeys = new Set(existingEdges.map((edge) => getSyntheticContainmentEdgeKey(edge)));
+
+  const matchPaths = (pattern: string): Array<string> => {
+    const normalizedPattern = normalizePath(pattern);
+
+    if (!isGlobTarget(pattern)) {
+      return visibleSet.has(normalizedPattern) ? [normalizedPattern] : [];
+    }
+
+    const matcher = createGlobMatcher(pattern);
+    return [...visibleSet].filter((path) => matcher(path)).sort((left, right) => left.localeCompare(right));
+  };
+
+  for (const rule of rules) {
+    const fromPaths = matchPaths(rule.from);
+    const toPaths = matchPaths(rule.to);
+
+    for (const from of fromPaths) {
+      for (const to of toPaths) {
+        if (from === to) {
+          continue;
+        }
+
+        const edge: ResolvedEdge = {
+          from,
+          to,
+          resolver: "synthetic:containment",
+          entities: ALL_ENTITY_SELECTION,
+          reExports: null,
+          synthetic: {
+            kind: "containment",
+            from,
+            to
+          }
+        };
+        const key = getSyntheticContainmentEdgeKey(edge);
+
+        if (syntheticEdgeKeys.has(key)) {
+          continue;
+        }
+
+        syntheticEdgeKeys.add(key);
+        syntheticEdges.push(edge);
+      }
+    }
+  }
+
+  return syntheticEdges;
+};
 
 export const buildGraph = async (
   nodes: ReadonlyArray<GraphNode>,
@@ -121,7 +201,16 @@ export const buildGraph = async (
         resolvedEdges: node.resolvedEdges?.map((edge) => ({
           ...edge,
           from: path,
-          to: normalizePath(edge.to)
+          to: normalizePath(edge.to),
+          ...(edge.synthetic === undefined
+            ? {}
+            : {
+                synthetic: {
+                  kind: "containment",
+                  from: normalizePath(edge.synthetic.from),
+                  to: normalizePath(edge.synthetic.to)
+                }
+              })
         }))
       });
     }
@@ -267,6 +356,17 @@ export const buildGraph = async (
   diagnostics.record("graphExportExternal", graphExportExternal);
   diagnostics.record("graphExportUnresolved", graphExportUnresolved);
   diagnostics.record("graphResolvedEdgesCreated", graphResolvedEdgesCreated);
+
+  const syntheticContainmentEdges = expandSyntheticContainmentEdges(
+    Array.from(normalizedNodes.keys()),
+    input.graph,
+    edges
+  );
+
+  if (syntheticContainmentEdges.length > 0) {
+    edges.push(...syntheticContainmentEdges);
+    diagnostics.record("graphResolvedEdgesCreated", graphResolvedEdgesCreated + syntheticContainmentEdges.length);
+  }
 
   diagnostics.record("graphEdgesSorted", edges.length);
 

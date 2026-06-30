@@ -23,6 +23,7 @@ describe("loadConfig", () => {
     expect(result.config.output?.format).toBe("text");
     expect(result.config.cache?.stale).toBe("content");
     expect(result.config.source?.includeNodeModules).toBe(false);
+    expect((result.config as any).graph?.contains).toEqual([]);
   });
 
   it("loads the configured cache stale strategy", async () => {
@@ -199,6 +200,56 @@ describe("loadConfig", () => {
       "src/App.tsx",
       "src/screens/**/*.tsx"
     ]);
+  });
+
+  it("loads graph synthetic containment rules when provided", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        graph: {
+          contains: [
+            {
+              from: "app/_layout.tsx",
+              to: "app/**/*.tsx"
+            },
+            {
+              from: "app/(tabs)/_layout.tsx",
+              to: "app/(tabs)/**/*.tsx"
+            }
+          ]
+        }
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect((result.config as any).graph).toEqual({
+      contains: [
+        {
+          from: "app/_layout.tsx",
+          to: "app/**/*.tsx"
+        },
+        {
+          from: "app/(tabs)/_layout.tsx",
+          to: "app/(tabs)/**/*.tsx"
+        }
+      ]
+    });
+  });
+
+  it("fails with an actionable error when graph.contains is not an array of objects", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        graph: {
+          contains: ["app/_layout.tsx"]
+        }
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining("graph.contains must be an array of { from, to } objects")
+    });
   });
 
   it("fails with an actionable error when tests.invalidateSubtreeWhenTouched is not a string array", async () => {

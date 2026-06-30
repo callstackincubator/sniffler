@@ -14,6 +14,13 @@ export type ResolvedEdge = {
         type: "all";
       }
     | null;
+  synthetic?:
+    | {
+        kind: "containment";
+        from: string;
+        to: string;
+      }
+    | undefined;
 };
 
 export type CacheEntry = {

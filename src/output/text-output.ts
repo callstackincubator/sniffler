@@ -9,6 +9,26 @@ const formatPath = (path: ReadonlyArray<string>): string => {
   return path.join(" -> ");
 };
 
+const formatContainmentEdges = (
+  edges: ReadonlyArray<{
+    from: string;
+    to: string;
+    synthetic?: {
+      kind: "containment";
+      from: string;
+      to: string;
+    };
+  }>
+): Array<string> => {
+  return edges.map((edge) => {
+    if (edge.synthetic !== undefined) {
+      return `    synthetic containment: ${formatPath([edge.from, edge.to])}`;
+    }
+
+    return `    containment edge: ${formatPath([edge.from, edge.to])}`;
+  });
+};
+
 export const renderTextOutput = (output: ImpactOutput): string => {
   const lines: string[] = [];
   const changedFiles = sortUniqueStrings(output.changedFiles);
@@ -61,6 +81,10 @@ export const renderTextOutput = (output: ImpactOutput): string => {
           lines.push(`    invalidated root: ${reason.invalidatedRoot}`);
           lines.push(`    reverse path: ${formatPath(reason.dependencyPath)}`);
           lines.push(`    containment path: ${formatPath(reason.containmentPath)}`);
+          if (reason.containmentPathEdges !== undefined && reason.containmentPathEdges.length > 0) {
+            lines.push("    containment edges:");
+            lines.push(...formatContainmentEdges(reason.containmentPathEdges));
+          }
           continue;
         }
 
