@@ -144,11 +144,11 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("Changed files:");
-    expect(output.join("")).toContain("src/shared.ts");
-    expect(output.join("")).toContain("Recommended E2E tests:");
+    expect(output.join("")).toContain("Changed");
+    expect(output.join("")).toContain("1 file");
     expect(output.join("")).toContain("e2e/feature.spec.ts");
-    expect(output.join("")).toContain("path: src/shared.ts -> src/feature.ts");
+    expect(output.join("")).toContain("depends on affected");
+    expect(output.join("")).toContain("src/feature.ts");
   });
 
   it("does not write diagnostics by default", async () => {
@@ -185,8 +185,10 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("Recommended E2E tests:");
-    expect(output.join("")).not.toContain("diagnostics.json");
+    expect(output.join("")).toContain("Impact");
+    expect(output.join("")).toContain("Diagnostics");
+    expect(output.join("")).toContain(".sniffler/diagnostics.json");
+    expect(output.join("")).not.toContain("Run with --diagnostics");
     expect(await fs.exists(".sniffler/diagnostics.json")).toBe(true);
 
     const diagnostics = await fs.readJson<{
@@ -333,7 +335,7 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("Recommended E2E tests:");
+    expect(output.join("")).toContain("Impact");
 
     const diagnostics = await fs.readJson<{
       metrics: Record<string, number | string | boolean>;
@@ -371,7 +373,7 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("Recommended E2E tests:");
+    expect(output.join("")).toContain("Impact");
     const diagnostics = await fs.readJson<{
       metrics: Record<string, number | string | boolean>;
     }>(".sniffler/diagnostics.json");
@@ -396,8 +398,8 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("src/shared.ts");
-    expect(output.join("")).toContain("src/feature.ts");
+    expect(output.join("")).toContain("Changed");
+    expect(output.join("")).toContain("2 files");
   });
 
   it("renders text output for legacy --changed files", async () => {
@@ -418,8 +420,9 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("src/shared.ts");
-    expect(output.join("")).toContain("Recommended E2E tests:");
+    expect(output.join("")).toContain("Changed");
+    expect(output.join("")).toContain("1 file");
+    expect(output.join("")).toContain("e2e/feature.spec.ts");
   });
 
   it("renders JSON output for base/head mode", async () => {
@@ -484,8 +487,8 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("run all: pnpm-lock.yaml");
-    expect(output.join("")).toContain("changed: pnpm-lock.yaml");
+    expect(output.join("")).toContain("runs because");
+    expect(output.join("")).toContain("pnpm-lock.yaml");
     expect(output.join("")).toContain("e2e/app.spec.ts");
     expect(output.join("")).toContain("e2e/feature.spec.ts");
   });
@@ -556,7 +559,8 @@ describe("CLI impact command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output.join("")).toContain("e2e/app.spec.ts");
-    expect(output.join("")).toContain("src/Button.android.ts -> src/app.ts");
+    expect(output.join("")).toContain("depends on affected");
+    expect(output.join("")).toContain("src/app.ts");
   });
 
   it("rejects no selection", async () => {
@@ -692,8 +696,8 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(output.join("")).toContain("Recommended E2E tests:");
-    expect(output.join("")).toContain("none");
+    expect(output.join("")).toContain("Impact");
+    expect(output.join("")).toContain("No E2E tests selected");
   });
 
   it("exposes the impact API from the top-level factory", async () => {
