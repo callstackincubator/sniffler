@@ -27,7 +27,7 @@ vi.mock("../src/graph/build-graph.js", async () => {
   };
 });
 
-import { prepareImpactGraph } from "../src/impact/impact-graph-workflow.js";
+import { prepareImpactGraph } from "../src/impact/graph-workflow.js";
 import { buildGraph } from "../src/graph/build-graph.js";
 
 const createDiagnostics = (): Diagnostics & { warnings: Array<unknown> } => {

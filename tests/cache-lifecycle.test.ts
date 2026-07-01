@@ -5,7 +5,7 @@ import { getCacheConfigHash } from "../src/cache/cache-key.js";
 import { createContentHashStaleChecker } from "../src/cache/stale-checker.js";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import type { Diagnostics } from "../src/diagnostics/diagnostics.js";
-import { prepareImpactCacheState, saveImpactCache } from "../src/impact/impact-cache-lifecycle.js";
+import { prepareImpactCacheState, saveImpactCache } from "../src/impact/cache-lifecycle.js";
 import { SCANNER_VERSION } from "../src/cache/cache-key.js";
 
 vi.mock("../src/scanner/scan-file.js", async () => {

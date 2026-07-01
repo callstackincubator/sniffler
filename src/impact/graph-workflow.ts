@@ -11,7 +11,7 @@ import { packageJsonWorkspacesStrategy } from "../workspaces/package-json-worksp
 import { pnpmWorkspaceStrategy } from "../workspaces/pnpm-workspace-yaml.js";
 import type { TsconfigPathsConfig } from "../resolvers/resolve-import.js";
 import type { Diagnostics } from "../diagnostics/diagnostics.js";
-import { prepareImpactCacheState, saveImpactCache } from "./impact-cache-lifecycle.js";
+import { prepareImpactCacheState, saveImpactCache } from "./cache-lifecycle.js";
 
 export type ImpactGraphWorkflowResult = {
   graph: DependencyGraph;

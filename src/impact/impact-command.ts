@@ -13,9 +13,9 @@ import type { ImpactOutput } from "../output/output-types.js";
 import { renderTextOutput } from "../output/text-output.js";
 import { convertTestMap } from "../test-map/convert-test-map.js";
 import { loadTestMap } from "../test-map/load-test-map.js";
-import { resolveChangedFiles } from "./impact-changed-files.js";
-import { prepareImpactGraph } from "./impact-graph-workflow.js";
-import { selectImpactTests } from "./impact-selection.js";
+import { resolveChangedFiles } from "./changed-files.js";
+import { prepareImpactGraph } from "./graph-workflow.js";
+import { selectImpactTests } from "./selection.js";
 import { resolveRunAllReasons, selectRunAllRecommendation } from "../test-map/recommend-tests.js";
 
 export type ImpactCommandInput = {

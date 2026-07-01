@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
-import {
-  resolveChangedFiles,
-} from "../src/impact/impact-changed-files.js";
+import { resolveChangedFiles } from "../src/impact/changed-files.js";
 import {
   resolveRunAllReasons,
   selectRunAllTests
