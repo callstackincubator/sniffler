@@ -1,16 +1,15 @@
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { GraphCache, ResolvedEdge, CacheEntry } from "../cache/cache-types.js";
 import { createGraphCacheStore, type GraphCacheStore } from "../cache/cache-store.js";
 import { getCacheConfigHash, SCANNER_VERSION } from "../cache/cache-key.js";
 import { loadCache } from "../cache/load-cache.js";
 import { saveCache } from "../cache/save-cache.js";
-import { readSourceFileMetadata, type StaleChecker } from "../cache/stale-checker.js";
+import type { StaleChecker } from "../cache/stale-checker.js";
 import type { SnifflerConfig } from "../config/config-schema.js";
 import { normalizePath } from "../filesystem/path-utils.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
 import type { GraphNode, DependencyGraph } from "../graph/build-graph.js";
-import { scanFileText } from "../scanner/scan-file.js";
+import { resolveSourceScanner } from "../scanner/source-scanner.js";
 import type { Diagnostics } from "../diagnostics/diagnostics.js";
 
 export type ImpactCacheScanState = {
@@ -31,10 +30,7 @@ export type ImpactCacheLifecycleInput = {
   staleChecker: StaleChecker;
   cacheStoreFactory?: (input: { cache: GraphCache | null; staleChecker: StaleChecker }) => GraphCacheStore;
   platform?: string;
-};
-
-const hashText = (text: string): string => {
-  return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+  sourceFiles: ReadonlyArray<string>;
 };
 
 const loadCacheForImpact = async (input: ImpactCacheLifecycleInput): Promise<{
@@ -70,6 +66,8 @@ const createGraphCache = async (input: {
   cacheStoreFactory?: (input: { cache: GraphCache | null; staleChecker: StaleChecker }) => GraphCacheStore;
   diagnostics: Diagnostics;
   sourceFiles: ReadonlyArray<string>;
+  cwd: string;
+  workers?: "auto" | number;
 }): Promise<ImpactCacheScanState> => {
   const warnings: string[] = [];
   const graphNodes: GraphNode[] = [];
@@ -82,6 +80,11 @@ const createGraphCache = async (input: {
     input.cacheStoreFactory?.({ cache: input.cache, staleChecker: input.staleChecker }) ??
     createGraphCacheStore(input.cache, input.staleChecker);
   const contentHashes = new Map<string, string>();
+  const sourceFileStates: Array<{
+    path: string;
+    cacheEntry: CacheEntry | null;
+  }> = [];
+  const missPaths: string[] = [];
   let cacheNeedsRefresh = input.cache === null || !canReuseCachedResolvedEdges;
   let cacheScanHits = 0;
   let cacheScanMisses = 0;
@@ -90,28 +93,61 @@ const createGraphCache = async (input: {
   await input.diagnostics.time("impact.sources.scan", async () => {
     for (const path of input.sourceFiles) {
       const cacheEntry = await cacheStore.getEntry(path);
-      const canReuseCachedEntry = cacheEntry !== null;
-      let scan: CacheEntry["scan"];
-      let contentHash: string;
+      sourceFileStates.push({
+        path,
+        cacheEntry
+      });
 
       if (cacheEntry !== null) {
-        scan = cacheEntry.scan;
-        contentHash = cacheEntry.contentHash;
-      } else {
-        const text = await input.fs.readFile(path);
-        scan = scanFileText({ filePath: path, text });
-        contentHash = hashText(text);
-      }
-
-      const metadata = cacheEntry === null ? await readSourceFileMetadata(input.fs, path) : cacheEntry.metadata;
-      contentHashes.set(path, contentHash);
-
-      if (canReuseCachedEntry) {
         cacheScanHits += 1;
       } else {
         cacheScanMisses += 1;
         cacheNeedsRefresh = true;
+        missPaths.push(path);
       }
+    }
+
+    const sourceScanner = resolveSourceScanner({
+      fs: input.fs,
+      cwd: input.cwd,
+      workers: input.workers,
+      missCount: missPaths.length
+    });
+    input.diagnostics.record("sourceScannerMode", sourceScanner.mode);
+    input.diagnostics.record("sourceScannerWorkers", sourceScanner.workers);
+    input.diagnostics.record("sourceScannerJobs", missPaths.length);
+    input.diagnostics.record("sourceScannerWorkerFailures", 0);
+
+    let missResults: ReadonlyArray<{
+      path: string;
+      scan: CacheEntry["scan"];
+      contentHash: string;
+      metadata?: CacheEntry["metadata"];
+    }> = [];
+
+    try {
+      missResults = missPaths.length === 0 ? [] : await sourceScanner.scan(missPaths);
+    } catch (error) {
+      if (sourceScanner.mode === "worker") {
+        input.diagnostics.increment("sourceScannerWorkerFailures");
+      }
+
+      throw error;
+    }
+
+    const missResultsByPath = new Map(missResults.map((entry) => [entry.path, entry] as const));
+
+    for (const { path, cacheEntry } of sourceFileStates) {
+      const canReuseCachedEntry = cacheEntry !== null;
+      const scan = cacheEntry?.scan ?? missResultsByPath.get(path)?.scan;
+      const contentHash = cacheEntry?.contentHash ?? missResultsByPath.get(path)?.contentHash;
+      const metadata = cacheEntry?.metadata ?? missResultsByPath.get(path)?.metadata;
+
+      if (scan === undefined || contentHash === undefined) {
+        throw new Error(`Missing scan result for ${path}`);
+      }
+
+      contentHashes.set(path, contentHash);
 
       if (canReuseCachedResolvedEdges && canReuseCachedEntry) {
         cachedResolvedEdgeFiles += 1;
@@ -167,9 +203,7 @@ const createGraphCache = async (input: {
   };
 };
 
-export const prepareImpactCacheState = async (input: ImpactCacheLifecycleInput & {
-  sourceFiles: ReadonlyArray<string>;
-}): Promise<ImpactCacheScanState> => {
+export const prepareImpactCacheState = async (input: ImpactCacheLifecycleInput): Promise<ImpactCacheScanState> => {
   const loaded = await loadCacheForImpact(input);
 
   return await createGraphCache({
@@ -180,7 +214,9 @@ export const prepareImpactCacheState = async (input: ImpactCacheLifecycleInput &
     staleChecker: input.staleChecker,
     cacheStoreFactory: input.cacheStoreFactory,
     diagnostics: input.diagnostics,
-    sourceFiles: input.sourceFiles
+    sourceFiles: input.sourceFiles,
+    cwd: input.cwd,
+    workers: input.config.workers
   });
 };
 

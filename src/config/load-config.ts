@@ -6,6 +6,7 @@ import {
   type SnifflerCacheStaleStrategy,
   type SnifflerConfigFile,
   type SnifflerOutputFormat,
+  type SnifflerWorkersSetting,
   type SnifflerWorkspaceStrategy
 } from "./config-schema.js";
 
@@ -91,6 +92,14 @@ const isCacheStaleStrategy = (value: unknown): value is SnifflerCacheStaleStrate
   return value === "content" || value === "metadata";
 };
 
+const isWorkersSetting = (value: unknown): value is SnifflerWorkersSetting => {
+  if (value === "auto") {
+    return true;
+  }
+
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+};
+
 const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
   if (!isRecord(value)) {
     throw createLoadError(
@@ -156,6 +165,14 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
         `Invalid config in ${path}: source.includeNodeModules must be a boolean.`
       );
     }
+  }
+
+  if ("workers" in value && value.workers !== undefined && !isWorkersSetting(value.workers)) {
+    throw createLoadError(
+      "SNIFFLER_INVALID_CONFIG",
+      path,
+      `Invalid config in ${path}: workers must be "auto" or a non-negative integer.`
+    );
   }
 
   if ("graph" in value && value.graph !== undefined) {
@@ -357,6 +374,7 @@ const validateConfig = (value: unknown, path: string): SnifflerConfigFile => {
 
 const normalizeConfig = (config: SnifflerConfigFile): SnifflerConfig => {
   return {
+    workers: config.workers ?? defaultConfig.workers,
     source: {
       roots: config.source?.roots ?? defaultConfig.source?.roots,
       extensions: config.source?.extensions ?? defaultConfig.source?.extensions,

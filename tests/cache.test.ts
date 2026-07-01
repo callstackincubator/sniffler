@@ -118,6 +118,38 @@ describe("cache", () => {
     );
   });
 
+  it("ignores workers when hashing cache config", () => {
+    const baseConfig = {
+      source: {
+        roots: ["src"],
+        extensions: [".ts"],
+        ignore: []
+      },
+      workspaces: {
+        strategies: []
+      },
+      resolver: {
+        tsconfig: "tsconfig.json",
+        conditions: {
+          import: ["import", "node", "default"],
+          require: ["require", "node", "default"]
+        }
+      }
+    };
+
+    expect(
+      getCacheConfigHash({
+        ...baseConfig,
+        workers: 0
+      } as any)
+    ).toBe(
+      getCacheConfigHash({
+        ...baseConfig,
+        workers: 8
+      } as any)
+    );
+  });
+
   it("loads a valid cache when the expected hashes match", async () => {
     const fs = createMemoryFileSystem({
       ".sniffler/cache.json": JSON.stringify(validCache)
@@ -183,6 +215,7 @@ describe("cache", () => {
     const calls: Array<{ method: string; path: string; content?: string }> = [];
 
     const fs: FileSystem = {
+      supportsWorkerScanning: false,
       readFile: async () => {
         throw new Error("not used");
       },

@@ -104,6 +104,7 @@ export const selectImpact = async (
     return await resolveChangedFiles(input, deps, cwd);
   });
   const runAllReasons = resolveRunAllReasons(changedFiles, config.tests?.runAllWhenChanged ?? []);
+
   if (runAllReasons.length > 0) {
     const runAllSelection = await diagnostics.time("impact.testMap.load", async () => {
       const testMap = await loadTestMap(fs, testMapPath);

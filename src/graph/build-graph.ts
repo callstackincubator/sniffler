@@ -63,6 +63,7 @@ export const buildGraph = async (
   input: BuildGraphInput = {}
 ): Promise<DependencyGraph> => {
   const fallbackFileSystem: FileSystem = {
+    supportsWorkerScanning: false,
     readFile: async (path: string) => {
       throw new Error(`File not found: ${path}`);
     },

@@ -41,6 +41,7 @@ export const createNodeFileSystem = (): FileSystem => {
   };
 
   return {
+    supportsWorkerScanning: true,
     readFile: readFileInternal,
     readFileBuffer: async (path: string) => {
       return readFile(path);
