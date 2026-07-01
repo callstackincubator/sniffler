@@ -1,5 +1,5 @@
 import type { ImpactOutput } from "./output-types.js";
-import { compareTestMatchReasons } from "../test-map/match-tests.js";
+import { compareTestMatchReasons } from "../test-map/recommend-tests.js";
 
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));

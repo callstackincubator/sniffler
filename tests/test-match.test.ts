@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { matchTests } from "../src/test-map/match-tests.js";
 import type { ImpactResult } from "../src/graph/traverse-impact.js";
 import type { TestMap } from "../src/test-map/load-test-map.js";
+import { recommendTests } from "../src/test-map/recommend-tests.js";
 
 const impact: ImpactResult = {
   affectedModules: [
@@ -77,9 +77,9 @@ const containmentTestMap: TestMap = [
   }
 ];
 
-describe("matchTests", () => {
+describe("recommendTests", () => {
   it("matches exact and glob targets with shortest dependency paths", () => {
-    expect(matchTests({ testMap, impact })).toEqual([
+    expect(recommendTests({ testMap, impact })).toEqual([
       {
         test: "alpha.spec.ts",
         reasons: [
@@ -145,7 +145,7 @@ describe("matchTests", () => {
       containment: containmentImpact
     } as any;
 
-    expect(matchTests(containmentInput)).toEqual([
+    expect(recommendTests(containmentInput)).toEqual([
       {
         test: "alpha.spec.ts",
         reasons: [
@@ -183,6 +183,6 @@ describe("matchTests", () => {
   it("returns stable results even when the manifest order changes", () => {
     const shuffled: TestMap = [...testMap].reverse();
 
-    expect(matchTests({ testMap: shuffled, impact })).toEqual(matchTests({ testMap, impact }));
+    expect(recommendTests({ testMap: shuffled, impact })).toEqual(recommendTests({ testMap, impact }));
   });
 });

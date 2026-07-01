@@ -4,12 +4,11 @@ import cac from "cac";
 import packageJson from "../package.json" with { type: "json" };
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { createDiagnostics, noopDiagnostics } from "./diagnostics/diagnostics.js";
-import { createNodeFileSystem } from "./filesystem/node-filesystem.js";
 import type { ImpactCommandInput } from "./impact/impact-command.js";
 import { runImpactCommand } from "./impact/impact-command.js";
 import type { RunCommandDeps, RunCommandInput } from "./run/run-command.js";
 import { runRunCommand } from "./run/run-command.js";
+import { runCliExecution } from "./cli-execution.js";
 
 export type CliSubcommand = "impact" | "run";
 
@@ -352,40 +351,22 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
         return emitValidationError(io, parsed.message, renderImpactHelp());
       }
 
-      const diagnostics =
-        options.diagnostics === true
-          ? createDiagnostics({
-              enabled: true,
-              fs: deps.fs ?? createNodeFileSystem(),
-              cwd: deps.cwd ?? process.cwd()
-            })
-          : noopDiagnostics;
-      let status: "success" | "error" = "success";
-      let errorMessage: string | undefined;
+      return await runCliExecution({
+        io,
+        deps,
+        diagnosticsEnabled: options.diagnostics === true,
+        run: async (diagnostics) => {
+          const result = await runImpactCommand(parsed.input, {
+            ...deps,
+            diagnostics
+          });
 
-      try {
-        const result = await runImpactCommand(parsed.input, {
-          ...deps,
-          diagnostics
-        });
-        if (result.exitCode !== 0) {
-          status = "error";
-          errorMessage = `exit code ${result.exitCode}`;
+          return {
+            exitCode: result.exitCode,
+            output: result.output
+          };
         }
-        io.stdout(result.output);
-        return { exitCode: result.exitCode };
-      } catch (error) {
-        status = "error";
-        const message = error instanceof Error ? error.message : String(error);
-        errorMessage = message;
-        io.stderr(`${message}\n`);
-        return { exitCode: 1 };
-      } finally {
-        await diagnostics.flush({
-          status,
-          error: errorMessage
-        });
-      }
+      });
     });
 
   cli
@@ -403,39 +384,21 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
         return emitValidationError(io, parsed.message, renderRunHelp());
       }
 
-      const diagnostics =
-        options.diagnostics === true
-          ? createDiagnostics({
-              enabled: true,
-              fs: deps.fs ?? createNodeFileSystem(),
-              cwd: deps.cwd ?? process.cwd()
-            })
-          : noopDiagnostics;
-      let status: "success" | "error" = "success";
-      let errorMessage: string | undefined;
+      return await runCliExecution({
+        io,
+        deps,
+        diagnosticsEnabled: options.diagnostics === true,
+        run: async (diagnostics) => {
+          const result = await runRunCommand(parsed.input, {
+            ...deps,
+            diagnostics
+          });
 
-      try {
-        const result = await runRunCommand(parsed.input, {
-          ...deps,
-          diagnostics
-        });
-        if (result.exitCode !== 0) {
-          status = "error";
-          errorMessage = `exit code ${result.exitCode}`;
+          return {
+            exitCode: result.exitCode
+          };
         }
-        return { exitCode: result.exitCode };
-      } catch (error) {
-        status = "error";
-        const message = error instanceof Error ? error.message : String(error);
-        errorMessage = message;
-        io.stderr(`${message}\n`);
-        return { exitCode: 1 };
-      } finally {
-        await diagnostics.flush({
-          status,
-          error: errorMessage
-        });
-      }
+      });
     });
 
   return cli;

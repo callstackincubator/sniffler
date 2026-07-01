@@ -1,6 +1,6 @@
 import type { ResolvedEdge } from "../cache/cache-types.js";
 import type { FileSystem } from "../filesystem/filesystem.js";
-import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
+import { normalizePath } from "../filesystem/path-utils.js";
 import { noopDiagnostics, type Diagnostics } from "../diagnostics/diagnostics.js";
 import type { SnifflerGraphConfig } from "../config/config-schema.js";
 import { relativeResolver } from "../resolvers/relative-resolver.js";
@@ -12,9 +12,16 @@ import {
 import { tsconfigPathsResolver } from "../resolvers/tsconfig-paths-resolver.js";
 import { workspacePackageResolver } from "../resolvers/workspace-package-resolver.js";
 import { packageExportsResolver } from "../resolvers/package-exports-resolver.js";
-import { ALL_ENTITY_SELECTION } from "../scanner/scanner-types.js";
-import type { RawExport, ScanResult } from "../scanner/scanner-types.js";
+import type { ScanResult } from "../scanner/scanner-types.js";
 import type { WorkspacePackage } from "../workspaces/discover-workspaces.js";
+import {
+  createExportAllResolvedEdge,
+  createImportResolvedEdge,
+  createReExportResolvedEdge,
+  expandSyntheticContainmentEdges,
+  normalizeResolvedEdge,
+  sortResolvedEdges
+} from "./edge-semantics.js";
 
 export type GraphNode = {
   path: string;
@@ -50,84 +57,6 @@ const resolvers = [
   packageExportsResolver,
   workspacePackageResolver
 ] as const;
-
-const isGlobTarget = (target: string): boolean => {
-  return /[*?]/.test(target);
-};
-
-const getSyntheticContainmentEdgeKey = (edge: ResolvedEdge): string => {
-  return JSON.stringify({
-    from: edge.from,
-    to: edge.to,
-    resolver: edge.resolver,
-    entities: edge.entities,
-    reExports: edge.reExports,
-    synthetic: edge.synthetic ?? null
-  });
-};
-
-const expandSyntheticContainmentEdges = (
-  graphVisiblePaths: ReadonlyArray<string>,
-  graphConfig: SnifflerGraphConfig | undefined,
-  existingEdges: ReadonlyArray<ResolvedEdge>
-): Array<ResolvedEdge> => {
-  const rules = graphConfig?.contains ?? [];
-
-  if (rules.length === 0 || graphVisiblePaths.length === 0) {
-    return [];
-  }
-
-  const visibleSet = new Set(graphVisiblePaths.map((path) => normalizePath(path)));
-  const syntheticEdges: ResolvedEdge[] = [];
-  const syntheticEdgeKeys = new Set(existingEdges.map((edge) => getSyntheticContainmentEdgeKey(edge)));
-
-  const matchPaths = (pattern: string): Array<string> => {
-    const normalizedPattern = normalizePath(pattern);
-
-    if (!isGlobTarget(pattern)) {
-      return visibleSet.has(normalizedPattern) ? [normalizedPattern] : [];
-    }
-
-    const matcher = createGlobMatcher(pattern);
-    return [...visibleSet].filter((path) => matcher(path)).sort((left, right) => left.localeCompare(right));
-  };
-
-  for (const rule of rules) {
-    const fromPaths = matchPaths(rule.from);
-    const toPaths = matchPaths(rule.to);
-
-    for (const from of fromPaths) {
-      for (const to of toPaths) {
-        if (from === to) {
-          continue;
-        }
-
-        const edge: ResolvedEdge = {
-          from,
-          to,
-          resolver: "synthetic:containment",
-          entities: ALL_ENTITY_SELECTION,
-          reExports: null,
-          synthetic: {
-            kind: "containment",
-            from,
-            to
-          }
-        };
-        const key = getSyntheticContainmentEdgeKey(edge);
-
-        if (syntheticEdgeKeys.has(key)) {
-          continue;
-        }
-
-        syntheticEdgeKeys.add(key);
-        syntheticEdges.push(edge);
-      }
-    }
-  }
-
-  return syntheticEdges;
-};
 
 export const buildGraph = async (
   nodes: ReadonlyArray<GraphNode>,
@@ -199,20 +128,7 @@ export const buildGraph = async (
       normalizedNodes.set(path, {
         path,
         scan: node.scan,
-        resolvedEdges: node.resolvedEdges?.map((edge) => ({
-          ...edge,
-          from: path,
-          to: normalizePath(edge.to),
-          ...(edge.synthetic === undefined
-            ? {}
-            : {
-                synthetic: {
-                  kind: "containment",
-                  from: normalizePath(edge.synthetic.from),
-                  to: normalizePath(edge.synthetic.to)
-                }
-              })
-        }))
+        resolvedEdges: node.resolvedEdges?.map((edge) => normalizeResolvedEdge(edge, path))
       });
     }
 
@@ -262,13 +178,7 @@ export const buildGraph = async (
         if (result.type === "resolved") {
           graphImportResolved += 1;
           graphResolvedEdgesCreated += 1;
-          edges.push({
-            from: node.path,
-            to: result.path,
-            resolver: result.resolver,
-            entities: dependency.entities,
-            reExports: null
-          });
+          edges.push(createImportResolvedEdge(node.path, result.path, result.resolver, dependency.entities));
           continue;
         }
 
@@ -305,36 +215,19 @@ export const buildGraph = async (
           graphExportResolved += 1;
           graphResolvedEdgesCreated += 1;
           if (exported.kind === "re-export") {
-            edges.push({
-              from: node.path,
-              to: result.path,
-              resolver: result.resolver,
-              entities: {
-                type: "named",
-                entities: [
-                  {
-                    imported: exported.imported,
-                    local: exported.exported === exported.imported ? undefined : exported.exported
-                  }
-                ]
-              },
-              reExports: [
-                {
-                  imported: exported.imported,
-                  exported: exported.exported
-                }
-              ]
-            });
+            edges.push(
+              createReExportResolvedEdge(
+                node.path,
+                result.path,
+                result.resolver,
+                exported.imported,
+                exported.exported
+              )
+            );
             continue;
           }
 
-          edges.push({
-            from: node.path,
-            to: result.path,
-            resolver: result.resolver,
-            entities: ALL_ENTITY_SELECTION,
-            reExports: ALL_ENTITY_SELECTION
-          });
+          edges.push(createExportAllResolvedEdge(node.path, result.path, result.resolver));
           continue;
         }
 
@@ -372,36 +265,7 @@ export const buildGraph = async (
   diagnostics.record("graphEdgesSorted", edges.length);
 
   const sortedEdges = await diagnostics.time("impact.graph.edges.sort", async () => {
-    return edges
-      .map((edge) => ({
-        edge,
-        entityKey: JSON.stringify(edge.entities),
-        reExportKey: JSON.stringify(edge.reExports)
-      }))
-      .sort((left, right) => {
-        const fromComparison = left.edge.from.localeCompare(right.edge.from);
-        if (fromComparison !== 0) {
-          return fromComparison;
-        }
-
-        const toComparison = left.edge.to.localeCompare(right.edge.to);
-        if (toComparison !== 0) {
-          return toComparison;
-        }
-
-        const resolverComparison = left.edge.resolver.localeCompare(right.edge.resolver);
-        if (resolverComparison !== 0) {
-          return resolverComparison;
-        }
-
-        const entityComparison = left.entityKey.localeCompare(right.entityKey);
-        if (entityComparison !== 0) {
-          return entityComparison;
-        }
-
-        return left.reExportKey.localeCompare(right.reExportKey);
-      })
-      .map(({ edge }) => edge);
+    return sortResolvedEdges(edges);
   });
 
   return {

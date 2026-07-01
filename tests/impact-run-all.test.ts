@@ -215,4 +215,23 @@ describe("run-all when changed", () => {
       }
     ]);
   });
+
+  it("loads test map once after graph work when run-all does not match", async () => {
+    const fs = createFixtureFileSystem({ runAllWhenChanged: ["pnpm-lock.yaml"] });
+    const diagnostics = createDiagnostics();
+
+    await selectImpact(
+      { changedFiles: ["src/app.ts"] },
+      {
+        fs,
+        cwd: ".",
+        diagnostics
+      }
+    );
+
+    const stageNames = diagnostics.stages.map((stage) => stage.name);
+
+    expect(stageNames.filter((name) => name === "impact.testMap.load")).toHaveLength(1);
+    expect(stageNames.indexOf("impact.testMap.load")).toBeGreaterThan(stageNames.indexOf("impact.traverse"));
+  });
 });
