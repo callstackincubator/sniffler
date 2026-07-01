@@ -3,6 +3,7 @@ import type { DependencyGraph } from "./build-graph.js";
 import type { ResolvedEdge } from "../cache/cache-types.js";
 import { ALL_ENTITY_SELECTION } from "../scanner/scanner-types.js";
 import type { EntitySelection } from "../scanner/scanner-types.js";
+import { edgeParticipatesInImpact } from "./edge-semantics.js";
 
 export type ImpactPath = {
   module: string;
@@ -203,7 +204,7 @@ export const traverseImpact = async (
   const queued = new Set<string>();
 
   for (const edge of graph.edges) {
-    if (edge.synthetic?.kind === "containment") {
+    if (!edgeParticipatesInImpact(edge)) {
       continue;
     }
 

@@ -1,6 +1,7 @@
 import { normalizePath } from "../filesystem/path-utils.js";
 import type { DependencyGraph } from "./build-graph.js";
 import type { ResolvedEdge } from "../cache/cache-types.js";
+import { edgeParticipatesInContainment } from "./edge-semantics.js";
 
 export type ContainmentPathEdge = {
   from: string;
@@ -53,6 +54,10 @@ export const traverseContainment = async (
   const bestPaths = new Map<string, ContainmentPath>();
 
   for (const edge of graph.edges) {
+    if (!edgeParticipatesInContainment(edge)) {
+      continue;
+    }
+
     const from = normalizePath(edge.from);
     const to = normalizePath(edge.to);
     const bucket = adjacency.get(from);
