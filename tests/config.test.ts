@@ -22,8 +22,33 @@ describe("loadConfig", () => {
     expect((result.config.tests as any)?.invalidateSubtreeWhenTouched).toEqual([]);
     expect(result.config.output?.format).toBe("text");
     expect(result.config.cache?.stale).toBe("content");
+    expect(result.config.workers).toBe("auto");
     expect(result.config.source?.includeNodeModules).toBe(false);
     expect((result.config as any).graph?.contains).toEqual([]);
+  });
+
+  it("loads the configured workers setting", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        workers: 2
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect(result.config.workers).toBe(2);
+  });
+
+  it("loads auto workers when provided", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        workers: "auto"
+      })
+    });
+
+    const result = await loadConfig({ fs });
+
+    expect(result.config.workers).toBe("auto");
   });
 
   it("loads the configured cache stale strategy", async () => {
@@ -138,6 +163,37 @@ describe("loadConfig", () => {
       message: expect.stringContaining("source.includeNodeModules must be a boolean")
     });
   });
+
+  it("fails with an actionable error when workers is invalid", async () => {
+    const fs = createMemoryFileSystem({
+      [defaultConfigPath]: JSON.stringify({
+        workers: -1
+      })
+    });
+
+    await expect(loadConfig({ fs })).rejects.toMatchObject({
+      code: "SNIFFLER_INVALID_CONFIG",
+      path: defaultConfigPath,
+      message: expect.stringContaining('workers must be "auto" or a non-negative integer')
+    });
+  });
+
+  it.each([null, true, false, 1.5, "bogus"])(
+    "rejects invalid workers values: %s",
+    async (workers) => {
+      const fs = createMemoryFileSystem({
+        [defaultConfigPath]: JSON.stringify({
+          workers
+        })
+      });
+
+      await expect(loadConfig({ fs })).rejects.toMatchObject({
+        code: "SNIFFLER_INVALID_CONFIG",
+        path: defaultConfigPath,
+        message: expect.stringContaining('workers must be "auto" or a non-negative integer')
+      });
+    }
+  );
 
   it("loads tests.sharedTargets when provided", async () => {
     const fs = createMemoryFileSystem({

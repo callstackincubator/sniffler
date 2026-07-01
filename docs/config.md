@@ -10,6 +10,7 @@ Create `.sniffler/config.json` in the project root:
 
 ```json
 {
+  "workers": "auto",
   "source": {
     "roots": ["apps", "packages"],
     "ignore": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**"]
@@ -87,6 +88,7 @@ Every property is optional. Missing properties are filled from the defaults belo
 
 ```ts
 type SnifflerConfig = {
+  workers?: "auto" | number;
   source?: {
     roots?: string[];
     extensions?: string[];
@@ -126,6 +128,34 @@ type SnifflerConfig = {
 ```
 
 The config file may also include a string `$schema` property.
+
+### `workers`
+
+Controls source scanning parallelism for cache misses.
+
+Default:
+
+```json
+"auto"
+```
+
+Accepted values:
+
+```json
+"auto"
+```
+
+or any non-negative integer:
+
+```json
+0
+```
+
+```json
+4
+```
+
+`0` keeps scanning serial. Any value above `0` enables worker-based scanning when Sniffler chooses the worker path. Worker scanning currently requires the Node file system implementation.
 
 `platform` is intentionally not a config property. It is a runtime option passed to `sniffler impact` or `sniffler run`, so the same project config can be reused for `android`, `ios`, web, or default resolution runs.
 

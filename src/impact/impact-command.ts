@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { SCANNER_VERSION, getCacheConfigHash } from "../cache/cache-key.js";
 import type { CacheEntry, GraphCache, ResolvedEdge } from "../cache/cache-types.js";
@@ -8,7 +7,6 @@ import { saveCache } from "../cache/save-cache.js";
 import {
   createContentHashStaleChecker,
   createMetadataStaleChecker,
-  readSourceFileMetadata,
   type StaleChecker
 } from "../cache/stale-checker.js";
 import type { SnifflerConfig, SnifflerOutputFormat } from "../config/config-schema.js";
@@ -22,7 +20,6 @@ import { traverseImpact } from "../graph/traverse-impact.js";
 import { renderJsonOutput } from "../output/json-output.js";
 import type { ImpactOutput } from "../output/output-types.js";
 import { renderTextOutput } from "../output/text-output.js";
-import { scanFileText } from "../scanner/scan-file.js";
 import { convertTestMap } from "../test-map/convert-test-map.js";
 import { loadTestMap } from "../test-map/load-test-map.js";
 import { matchTests } from "../test-map/match-tests.js";
@@ -32,6 +29,7 @@ import { pnpmWorkspaceStrategy } from "../workspaces/pnpm-workspace-yaml.js";
 import type { TsconfigPathsConfig } from "../resolvers/resolve-import.js";
 import { noopDiagnostics, type Diagnostics } from "../diagnostics/diagnostics.js";
 import type { TestMap } from "../test-map/load-test-map.js";
+import { resolveSourceScanner } from "../scanner/source-scanner.js";
 
 export type ImpactCommandInput = {
   base?: string;
@@ -81,10 +79,6 @@ const mergeDependsOn = (dependsOn: ReadonlyArray<string>, sharedTargets: Readonl
   }
 
   return [...mergedTargets.values()];
-};
-
-const hashText = (text: string): string => {
-  return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 };
 
 const getFs = (deps: ImpactCommandDeps): FileSystem => {
@@ -395,6 +389,11 @@ export const selectImpact = async (
     cachePath !== undefined && cache !== null && Object.keys(cacheEntries).length === sourceFiles.length;
   const cacheStore = deps.cacheStoreFactory?.({ cache, staleChecker }) ?? createGraphCacheStore(cache, staleChecker);
   const contentHashes = new Map<string, string>();
+  const sourceFileStates: Array<{
+    path: string;
+    cacheEntry: CacheEntry | null;
+  }> = [];
+  const missPaths: string[] = [];
   let cacheNeedsRefresh = cache === null || !canReuseCachedResolvedEdges;
   let cacheScanHits = 0;
   let cacheScanMisses = 0;
@@ -403,27 +402,60 @@ export const selectImpact = async (
   await diagnostics.time("impact.sources.scan", async () => {
     for (const path of sourceFiles) {
       const cacheEntry = await cacheStore.getEntry(path);
-      const canReuseCachedEntry = cacheEntry !== null;
-      let scan: CacheEntry["scan"];
-      let contentHash: string;
+      sourceFileStates.push({
+        path,
+        cacheEntry
+      });
 
       if (cacheEntry !== null) {
-        scan = cacheEntry.scan;
-        contentHash = cacheEntry.contentHash;
-      } else {
-        const text = await fs.readFile(path);
-        scan = scanFileText({ filePath: path, text });
-        contentHash = hashText(text);
-      }
-      const metadata = cacheEntry === null ? await readSourceFileMetadata(fs, path) : cacheEntry.metadata;
-      contentHashes.set(path, contentHash);
-
-      if (canReuseCachedEntry) {
         cacheScanHits += 1;
       } else {
         cacheScanMisses += 1;
         cacheNeedsRefresh = true;
+        missPaths.push(path);
       }
+    }
+
+    const sourceScanner = resolveSourceScanner({
+      fs,
+      cwd,
+      workers: config.workers,
+      missCount: missPaths.length
+    });
+    diagnostics.record("sourceScannerMode", sourceScanner.mode);
+    diagnostics.record("sourceScannerWorkers", sourceScanner.workers);
+    diagnostics.record("sourceScannerJobs", missPaths.length);
+    diagnostics.record("sourceScannerWorkerFailures", 0);
+
+    let missResults: ReadonlyArray<{
+      path: string;
+      scan: CacheEntry["scan"];
+      contentHash: string;
+      metadata?: CacheEntry["metadata"];
+    }> = [];
+
+    try {
+      missResults = missPaths.length === 0 ? [] : await sourceScanner.scan(missPaths);
+    } catch (error) {
+      if (sourceScanner.mode === "worker") {
+        diagnostics.increment("sourceScannerWorkerFailures");
+      }
+
+      throw error;
+    }
+    const missResultsByPath = new Map(missResults.map((entry) => [entry.path, entry] as const));
+
+    for (const { path, cacheEntry } of sourceFileStates) {
+      const canReuseCachedEntry = cacheEntry !== null;
+      const scan = cacheEntry?.scan ?? missResultsByPath.get(path)?.scan;
+      const contentHash = cacheEntry?.contentHash ?? missResultsByPath.get(path)?.contentHash;
+      const metadata = cacheEntry?.metadata ?? missResultsByPath.get(path)?.metadata;
+
+      if (scan === undefined || contentHash === undefined) {
+        throw new Error(`Missing scan result for ${path}`);
+      }
+
+      contentHashes.set(path, contentHash);
 
       if (canReuseCachedResolvedEdges && canReuseCachedEntry) {
         cachedResolvedEdgeFiles += 1;

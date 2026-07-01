@@ -1,0 +1,785 @@
+import { ALL_ENTITY_SELECTION } from "./scanner-types.js";
+const isAsciiLetter = (code) => {
+    return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+};
+const isIdentifierStart = (char) => {
+    if (char === undefined) {
+        return false;
+    }
+    const code = char.charCodeAt(0);
+    return code === 36 || code === 95 || isAsciiLetter(code);
+};
+const isIdentifierChar = (char) => {
+    if (char === undefined) {
+        return false;
+    }
+    const code = char.charCodeAt(0);
+    return code === 36 || code === 95 || (code >= 48 && code <= 57) || isAsciiLetter(code);
+};
+const isWhitespace = (char) => {
+    if (char === undefined) {
+        return false;
+    }
+    switch (char.charCodeAt(0)) {
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+        case 13:
+        case 32:
+        case 160:
+        case 5760:
+        case 8192:
+        case 8193:
+        case 8194:
+        case 8195:
+        case 8196:
+        case 8197:
+        case 8198:
+        case 8199:
+        case 8200:
+        case 8201:
+        case 8202:
+        case 8232:
+        case 8233:
+        case 8239:
+        case 8287:
+        case 12288:
+        case 65279:
+            return true;
+        default:
+            return false;
+    }
+};
+const createWarningMessage = (filePath, line, kind) => {
+    const prefix = filePath === undefined ? `${line}` : `${filePath}:${line}`;
+    return `${prefix} dynamic ${kind} target is not statically resolvable`;
+};
+const createNamedSelection = (entities) => {
+    return {
+        type: "named",
+        entities
+    };
+};
+const isTopLevelDelimiter = (mode, char) => {
+    if (char === undefined) {
+        return false;
+    }
+    switch (mode) {
+        case "statement":
+            return char === ";" || char === "\n";
+        case "call":
+            return char === ")";
+        case "variable":
+            return char === "," || char === ";" || char === "\n";
+    }
+};
+export const scanFileText = (input) => {
+    const text = input.text;
+    const state = { index: 0, line: 1, column: 1 };
+    const imports = [];
+    const exports = [];
+    const warnings = [];
+    const currentChar = () => {
+        return text[state.index];
+    };
+    const nextChar = () => {
+        return text[state.index + 1];
+    };
+    const location = () => {
+        return {
+            line: state.line,
+            column: state.column
+        };
+    };
+    const snapshotState = () => {
+        return {
+            index: state.index,
+            line: state.line,
+            column: state.column
+        };
+    };
+    const restoreState = (snapshot) => {
+        state.index = snapshot.index;
+        state.line = snapshot.line;
+        state.column = snapshot.column;
+    };
+    const advance = (count = 1) => {
+        for (let step = 0; step < count && state.index < text.length; step += 1) {
+            const char = text[state.index];
+            state.index += 1;
+            if (char === "\n") {
+                state.line += 1;
+                state.column = 1;
+                continue;
+            }
+            state.column += 1;
+        }
+    };
+    const startsWithWord = (word) => {
+        if (!text.startsWith(word, state.index)) {
+            return false;
+        }
+        const before = text[state.index - 1];
+        const after = text[state.index + word.length];
+        return !isIdentifierChar(before) && !isIdentifierChar(after);
+    };
+    const skipWhitespaceAndComments = () => {
+        while (state.index < text.length) {
+            const char = currentChar();
+            if (isWhitespace(char)) {
+                advance();
+                continue;
+            }
+            if (char === "/" && nextChar() === "/") {
+                advance(2);
+                while (state.index < text.length && currentChar() !== "\n") {
+                    advance();
+                }
+                continue;
+            }
+            if (char === "/" && nextChar() === "*") {
+                advance(2);
+                while (state.index < text.length) {
+                    if (currentChar() === "*" && nextChar() === "/") {
+                        advance(2);
+                        break;
+                    }
+                    advance();
+                }
+                continue;
+            }
+            break;
+        }
+    };
+    const consumeQuotedLiteral = (quote) => {
+        const loc = location();
+        advance();
+        const start = state.index;
+        while (state.index < text.length) {
+            const char = currentChar();
+            if (char === "\\") {
+                advance(2);
+                continue;
+            }
+            if (char === quote) {
+                const specifier = text.slice(start, state.index);
+                advance();
+                return { specifier, loc };
+            }
+            advance();
+        }
+        return null;
+    };
+    const consumeTemplateLiteral = () => {
+        const loc = location();
+        advance();
+        const start = state.index;
+        let hadExpression = false;
+        const consumeTemplateExpression = () => {
+            let depth = 1;
+            while (state.index < text.length && depth > 0) {
+                skipWhitespaceAndComments();
+                if (state.index >= text.length || depth <= 0) {
+                    break;
+                }
+                const char = currentChar();
+                if (char === "'" || char === '"') {
+                    const parsed = consumeQuotedLiteral(char);
+                    if (parsed === null) {
+                        return;
+                    }
+                    continue;
+                }
+                if (char === "`") {
+                    const parsed = consumeTemplateLiteral();
+                    if (parsed === null) {
+                        return;
+                    }
+                    continue;
+                }
+                if (char === "{") {
+                    depth += 1;
+                    advance();
+                    continue;
+                }
+                if (char === "}") {
+                    depth -= 1;
+                    advance();
+                    continue;
+                }
+                advance();
+            }
+        };
+        while (state.index < text.length) {
+            const char = currentChar();
+            if (char === "\\") {
+                advance(2);
+                continue;
+            }
+            if (char === "`") {
+                const specifier = text.slice(start, state.index);
+                advance();
+                return { specifier, loc, hadExpression };
+            }
+            if (char === "$" && nextChar() === "{") {
+                hadExpression = true;
+                advance(2);
+                consumeTemplateExpression();
+                continue;
+            }
+            advance();
+        }
+        return null;
+    };
+    const consumeLiteral = () => {
+        const char = currentChar();
+        if (char === "'" || char === '"') {
+            return consumeQuotedLiteral(char);
+        }
+        if (char === "`") {
+            const template = consumeTemplateLiteral();
+            if (template === null || template.hadExpression) {
+                return null;
+            }
+            return {
+                specifier: template.specifier,
+                loc: template.loc
+            };
+        }
+        return null;
+    };
+    const readIdentifier = () => {
+        if (!isIdentifierStart(currentChar())) {
+            return null;
+        }
+        const start = state.index;
+        advance();
+        while (isIdentifierChar(currentChar())) {
+            advance();
+        }
+        return text.slice(start, state.index);
+    };
+    const skipToTopLevelDelimiter = (mode) => {
+        let parenDepth = 0;
+        let braceDepth = 0;
+        let bracketDepth = 0;
+        while (state.index < text.length) {
+            const char = currentChar();
+            if (char === "'" || char === '"' || char === "`") {
+                const parsed = consumeLiteral();
+                if (parsed === null) {
+                    continue;
+                }
+                continue;
+            }
+            if (char === "/" && nextChar() === "/") {
+                advance(2);
+                while (state.index < text.length && currentChar() !== "\n") {
+                    advance();
+                }
+                continue;
+            }
+            if (char === "/" && nextChar() === "*") {
+                advance(2);
+                while (state.index < text.length) {
+                    if (currentChar() === "*" && nextChar() === "/") {
+                        advance(2);
+                        break;
+                    }
+                    advance();
+                }
+                continue;
+            }
+            if (parenDepth === 0 &&
+                braceDepth === 0 &&
+                bracketDepth === 0 &&
+                isTopLevelDelimiter(mode, char)) {
+                return;
+            }
+            if (char === "(") {
+                parenDepth += 1;
+                advance();
+                continue;
+            }
+            if (char === ")") {
+                if (parenDepth > 0) {
+                    parenDepth -= 1;
+                }
+                advance();
+                continue;
+            }
+            if (char === "{") {
+                braceDepth += 1;
+                advance();
+                continue;
+            }
+            if (char === "}") {
+                if (braceDepth > 0) {
+                    braceDepth -= 1;
+                }
+                advance();
+                continue;
+            }
+            if (char === "[") {
+                bracketDepth += 1;
+                advance();
+                continue;
+            }
+            if (char === "]") {
+                if (bracketDepth > 0) {
+                    bracketDepth -= 1;
+                }
+                advance();
+                continue;
+            }
+            advance();
+        }
+    };
+    const finishStatement = () => {
+        skipToTopLevelDelimiter("statement");
+        if (currentChar() === ";" || currentChar() === "\n") {
+            advance();
+        }
+    };
+    const parseNamedBindings = () => {
+        if (currentChar() !== "{") {
+            return null;
+        }
+        advance();
+        const bindings = [];
+        while (state.index < text.length) {
+            skipWhitespaceAndComments();
+            if (currentChar() === "}") {
+                advance();
+                return bindings;
+            }
+            if (currentChar() === ",") {
+                advance();
+                continue;
+            }
+            if (startsWithWord("type")) {
+                advance(4);
+                skipWhitespaceAndComments();
+            }
+            const imported = readIdentifier();
+            if (imported === null) {
+                return null;
+            }
+            let local = imported;
+            skipWhitespaceAndComments();
+            if (startsWithWord("as")) {
+                advance(2);
+                skipWhitespaceAndComments();
+                const alias = readIdentifier();
+                if (alias === null) {
+                    return null;
+                }
+                local = alias;
+            }
+            bindings.push(local === imported ? { imported } : { imported, local });
+            skipWhitespaceAndComments();
+            if (currentChar() === ",") {
+                advance();
+                continue;
+            }
+            if (currentChar() === "}") {
+                advance();
+                return bindings;
+            }
+        }
+        return null;
+    };
+    const emitImport = (specifier, kind, loc, entities) => {
+        imports.push({
+            specifier,
+            kind,
+            loc,
+            entities
+        });
+    };
+    const emitLocalExport = (exported, local, loc) => {
+        exports.push({
+            kind: "local",
+            exported,
+            local,
+            loc
+        });
+    };
+    const emitReExport = (specifier, imported, exported, loc) => {
+        exports.push({
+            kind: "re-export",
+            specifier,
+            imported,
+            exported,
+            loc
+        });
+    };
+    const emitReExportAll = (specifier, loc, exportedNamespace) => {
+        exports.push({
+            kind: "re-export-all",
+            specifier,
+            exportedNamespace,
+            loc
+        });
+    };
+    const emitWarning = (kind, loc) => {
+        warnings.push({
+            type: kind === "import" ? "unresolved-dynamic-import" : "unresolved-dynamic-require",
+            message: createWarningMessage(input.filePath, loc.line, kind),
+            loc
+        });
+    };
+    const parseDynamicImportOrRequire = (kind) => {
+        skipWhitespaceAndComments();
+        if (currentChar() !== "(") {
+            return;
+        }
+        advance();
+        skipWhitespaceAndComments();
+        const argumentLoc = location();
+        const parsed = consumeLiteral();
+        if (parsed === null) {
+            emitWarning(kind, argumentLoc);
+            skipToTopLevelDelimiter("call");
+            if (currentChar() === ")") {
+                advance();
+            }
+            return;
+        }
+        emitImport(parsed.specifier, kind === "import" ? "dynamic-import" : "require", parsed.loc, ALL_ENTITY_SELECTION);
+        skipToTopLevelDelimiter("call");
+        if (currentChar() === ")") {
+            advance();
+        }
+    };
+    const parseImportStatement = () => {
+        skipWhitespaceAndComments();
+        if (currentChar() === "'" || currentChar() === '"' || currentChar() === "`") {
+            const parsed = consumeLiteral();
+            if (parsed !== null) {
+                emitImport(parsed.specifier, "import", parsed.loc, ALL_ENTITY_SELECTION);
+            }
+            finishStatement();
+            return;
+        }
+        if (startsWithWord("type")) {
+            advance(4);
+            skipWhitespaceAndComments();
+        }
+        if (currentChar() === "*") {
+            advance();
+            skipWhitespaceAndComments();
+            if (startsWithWord("as")) {
+                advance(2);
+                skipWhitespaceAndComments();
+                if (readIdentifier() === null) {
+                    finishStatement();
+                    return;
+                }
+            }
+            skipWhitespaceAndComments();
+            if (!startsWithWord("from")) {
+                finishStatement();
+                return;
+            }
+            advance(4);
+            skipWhitespaceAndComments();
+            const parsed = consumeLiteral();
+            if (parsed !== null) {
+                emitImport(parsed.specifier, "import", parsed.loc, ALL_ENTITY_SELECTION);
+            }
+            finishStatement();
+            return;
+        }
+        if (currentChar() === "{") {
+            const named = parseNamedBindings();
+            if (named === null) {
+                finishStatement();
+                return;
+            }
+            const afterNamed = snapshotState();
+            skipWhitespaceAndComments();
+            if (!startsWithWord("from")) {
+                restoreState(afterNamed);
+                finishStatement();
+                return;
+            }
+            advance(4);
+            skipWhitespaceAndComments();
+            const parsed = consumeLiteral();
+            if (parsed !== null) {
+                emitImport(parsed.specifier, "import", parsed.loc, createNamedSelection(named));
+            }
+            finishStatement();
+            return;
+        }
+        if (isIdentifierStart(currentChar())) {
+            const defaultLocal = readIdentifier();
+            if (defaultLocal === null) {
+                finishStatement();
+                return;
+            }
+            const namedBindings = [{ imported: "default", local: defaultLocal }];
+            skipWhitespaceAndComments();
+            if (currentChar() === ",") {
+                advance();
+                skipWhitespaceAndComments();
+                if (currentChar() === "{") {
+                    const named = parseNamedBindings();
+                    if (named === null) {
+                        finishStatement();
+                        return;
+                    }
+                    namedBindings.push(...named);
+                }
+                else {
+                    finishStatement();
+                    return;
+                }
+            }
+            const afterSelection = snapshotState();
+            skipWhitespaceAndComments();
+            if (!startsWithWord("from")) {
+                restoreState(afterSelection);
+                finishStatement();
+                return;
+            }
+            advance(4);
+            skipWhitespaceAndComments();
+            const parsed = consumeLiteral();
+            if (parsed !== null) {
+                emitImport(parsed.specifier, "import", parsed.loc, createNamedSelection(namedBindings));
+            }
+            finishStatement();
+        }
+    };
+    const parseExportNamedList = (keywordLoc) => {
+        const named = parseNamedBindings();
+        if (named === null) {
+            finishStatement();
+            return;
+        }
+        const afterNamed = snapshotState();
+        skipWhitespaceAndComments();
+        if (startsWithWord("from")) {
+            advance(4);
+            skipWhitespaceAndComments();
+            const parsed = consumeLiteral();
+            if (parsed !== null) {
+                for (const binding of named) {
+                    emitReExport(parsed.specifier, binding.imported, binding.local ?? binding.imported, parsed.loc);
+                }
+            }
+            finishStatement();
+            return;
+        }
+        restoreState(afterNamed);
+        for (const binding of named) {
+            emitLocalExport(binding.local ?? binding.imported, binding.imported === (binding.local ?? binding.imported) ? undefined : binding.imported, keywordLoc);
+        }
+        finishStatement();
+    };
+    const parseVariableExport = (keywordLoc) => {
+        while (state.index < text.length) {
+            skipWhitespaceAndComments();
+            if (currentChar() === "{" || currentChar() === "[") {
+                finishStatement();
+                return;
+            }
+            if (currentChar() === "," || currentChar() === ";") {
+                advance();
+                if (currentChar() === ";") {
+                    advance();
+                }
+                continue;
+            }
+            const name = readIdentifier();
+            if (name === null) {
+                if (currentChar() === "=") {
+                    advance();
+                    skipToTopLevelDelimiter("variable");
+                    continue;
+                }
+                if (currentChar() === "\n") {
+                    advance();
+                    return;
+                }
+                if (state.index >= text.length) {
+                    return;
+                }
+                advance();
+                continue;
+            }
+            emitLocalExport(name, undefined, keywordLoc);
+            skipWhitespaceAndComments();
+            if (currentChar() === "=") {
+                advance();
+                skipToTopLevelDelimiter("variable");
+            }
+            if (currentChar() === ",") {
+                advance();
+                continue;
+            }
+            if (currentChar() === "\n" || currentChar() === ";") {
+                if (currentChar() === ";") {
+                    advance();
+                }
+                return;
+            }
+        }
+    };
+    const parseNamedDeclarationExport = (keywordLoc, keyword) => {
+        if (keyword === "type") {
+            skipWhitespaceAndComments();
+        }
+        const name = readIdentifier();
+        if (name !== null) {
+            emitLocalExport(name, undefined, keywordLoc);
+        }
+        finishStatement();
+    };
+    const parseExportStatement = (keywordLoc) => {
+        skipWhitespaceAndComments();
+        if (currentChar() === "*") {
+            advance();
+            skipWhitespaceAndComments();
+            let exportedNamespace;
+            if (startsWithWord("as")) {
+                advance(2);
+                skipWhitespaceAndComments();
+                exportedNamespace = readIdentifier() ?? undefined;
+                skipWhitespaceAndComments();
+            }
+            if (!startsWithWord("from")) {
+                finishStatement();
+                return;
+            }
+            advance(4);
+            skipWhitespaceAndComments();
+            const parsed = consumeLiteral();
+            if (parsed !== null) {
+                emitReExportAll(parsed.specifier, parsed.loc, exportedNamespace);
+            }
+            finishStatement();
+            return;
+        }
+        if (currentChar() === "{") {
+            parseExportNamedList(keywordLoc);
+            return;
+        }
+        if (startsWithWord("default")) {
+            emitLocalExport("default", undefined, keywordLoc);
+            advance(7);
+            finishStatement();
+            return;
+        }
+        if (startsWithWord("type")) {
+            const saved = {
+                index: state.index,
+                line: state.line,
+                column: state.column
+            };
+            advance(4);
+            skipWhitespaceAndComments();
+            if (currentChar() === "{") {
+                parseExportNamedList(keywordLoc);
+                return;
+            }
+            state.index = saved.index;
+            state.line = saved.line;
+            state.column = saved.column;
+        }
+        while (startsWithWord("declare") || startsWithWord("async") || startsWithWord("abstract")) {
+            if (startsWithWord("declare")) {
+                advance(7);
+            }
+            else if (startsWithWord("async")) {
+                advance(5);
+            }
+            else {
+                advance(8);
+            }
+            skipWhitespaceAndComments();
+        }
+        if (startsWithWord("const") || startsWithWord("let") || startsWithWord("var")) {
+            if (startsWithWord("const")) {
+                advance(5);
+            }
+            else if (startsWithWord("let")) {
+                advance(3);
+            }
+            else {
+                advance(3);
+            }
+            parseVariableExport(keywordLoc);
+            return;
+        }
+        if (startsWithWord("function") ||
+            startsWithWord("class") ||
+            startsWithWord("enum") ||
+            startsWithWord("interface") ||
+            startsWithWord("type")) {
+            if (startsWithWord("function")) {
+                advance(8);
+            }
+            else if (startsWithWord("class")) {
+                advance(5);
+            }
+            else if (startsWithWord("enum")) {
+                advance(4);
+            }
+            else if (startsWithWord("interface")) {
+                advance(9);
+            }
+            else {
+                advance(4);
+            }
+            parseNamedDeclarationExport(keywordLoc, "type");
+            return;
+        }
+        finishStatement();
+    };
+    while (state.index < text.length) {
+        skipWhitespaceAndComments();
+        if (state.index >= text.length) {
+            break;
+        }
+        const char = currentChar();
+        if (isIdentifierStart(char)) {
+            const keywordLoc = location();
+            const identifier = readIdentifier();
+            if (identifier === null) {
+                advance();
+                continue;
+            }
+            if (identifier === "import") {
+                if (currentChar() === ".") {
+                    continue;
+                }
+                skipWhitespaceAndComments();
+                if (currentChar() === "(") {
+                    parseDynamicImportOrRequire("import");
+                    continue;
+                }
+                parseImportStatement();
+                continue;
+            }
+            if (identifier === "export") {
+                parseExportStatement(keywordLoc);
+                continue;
+            }
+            if (identifier === "require") {
+                parseDynamicImportOrRequire("require");
+                continue;
+            }
+            continue;
+        }
+        advance();
+    }
+    return {
+        imports,
+        exports,
+        warnings
+    };
+};

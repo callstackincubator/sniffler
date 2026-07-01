@@ -96,6 +96,7 @@ export const createMemoryFileSystem = (entries: Record<string, string> = {}): Me
   };
 
   return {
+    supportsWorkerScanning: false,
     seed,
     readFile: readFileInternal,
     readFileBuffer: async (path: string) => {

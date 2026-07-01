@@ -69,6 +69,7 @@ const hashText = (text: string): string => {
 };
 
 const fixtureConfig = {
+  workers: 0,
   source: {
     roots: ["src"],
     extensions: [".ts"],
@@ -341,6 +342,7 @@ describe("impact cache", () => {
           extensions: [".ts"],
           ignore: []
         },
+        workers: 0,
         workspaces: {
           strategies: []
         },

@@ -26,6 +26,7 @@ const buildBenchmarkFileSystem = () => {
     "package.json": JSON.stringify({ name: "sniffler-benchmark" }),
     "tsconfig.json": JSON.stringify({ compilerOptions: { baseUrl: "." } }),
     ".sniffler/config.json": JSON.stringify({
+      workers: 0,
       source: {
         roots: ["src"],
         extensions: [".ts"],

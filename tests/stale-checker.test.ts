@@ -44,6 +44,7 @@ describe("stale checkers", () => {
 
   it("treats matching metadata as fresh", async () => {
     const fs = {
+      supportsWorkerScanning: false,
       readFile: vi.fn(async () => {
         throw new Error("readFile should not be called");
       }),
@@ -88,6 +89,7 @@ describe("stale checkers", () => {
 
   it("treats mismatching metadata as stale", async () => {
     const fs = {
+      supportsWorkerScanning: false,
       readFile: vi.fn(async () => {
         throw new Error("readFile should not be called");
       }),

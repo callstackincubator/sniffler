@@ -1,4 +1,5 @@
 export type SnifflerConfig = {
+  workers?: "auto" | number;
   source?: {
     roots?: ReadonlyArray<string>;
     extensions?: ReadonlyArray<string>;
@@ -45,6 +46,7 @@ export type SnifflerConfigFile = SnifflerConfig & {
 export const defaultConfigPath = ".sniffler/config.json";
 
 export const defaultConfig = {
+  workers: "auto",
   source: {
     roots: ["."],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
@@ -82,3 +84,4 @@ export const defaultConfig = {
 export type SnifflerWorkspaceStrategy = "package-json" | "pnpm-workspace";
 export type SnifflerOutputFormat = "text" | "json";
 export type SnifflerCacheStaleStrategy = "content" | "metadata";
+export type SnifflerWorkersSetting = "auto" | number;

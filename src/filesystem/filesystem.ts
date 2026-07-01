@@ -19,6 +19,7 @@ export type SnifflerInvalidJsonError = Error & {
 };
 
 export type FileSystem = {
+  supportsWorkerScanning: boolean;
   readFile: (path: string) => Promise<string>;
   readFileBuffer?: (path: string) => Promise<Uint8Array>;
   readJson: <T>(path: string) => Promise<T>;
