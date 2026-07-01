@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import {
   resolveChangedFiles,
-  resolveRunAllReasons,
-  resolveRunAllSelection
 } from "../src/impact/impact-changed-files.js";
+import {
+  resolveRunAllReasons,
+  selectRunAllTests
+} from "../src/test-map/recommend-tests.js";
 
 describe("impact changed-files helpers", () => {
   it("normalizes and deduplicates explicit changed files", async () => {
@@ -55,42 +57,37 @@ describe("impact changed-files helpers", () => {
     });
 
     const reasons = resolveRunAllReasons(["pnpm-lock.yaml"], ["pnpm-lock.yaml"]);
-    const result = await resolveRunAllSelection({
-      fs,
-      testMapPath: ".sniffler/test-map.json",
-      reasons
-    });
+    const testMap = await fs.readJson<Array<{ test: string; dependsOn: Array<string> }>>(
+      ".sniffler/test-map.json"
+    );
 
-    expect(result).toEqual({
-      reasons: [
-        {
-          kind: "run-all",
-          changedFile: "pnpm-lock.yaml",
-          declaredTarget: "pnpm-lock.yaml"
-        }
-      ],
-      recommendedTests: [
-        {
-          test: "e2e/app.spec.ts",
-          reasons: [
-            {
-              kind: "run-all",
-              changedFile: "pnpm-lock.yaml",
-              declaredTarget: "pnpm-lock.yaml"
-            }
-          ]
-        },
-        {
-          test: "e2e/feature.spec.ts",
-          reasons: [
-            {
-              kind: "run-all",
-              changedFile: "pnpm-lock.yaml",
-              declaredTarget: "pnpm-lock.yaml"
-            }
-          ]
-        }
-      ]
-    });
+    expect(selectRunAllTests(
+      testMap.map((entry) => ({
+        test: entry.test,
+        dependsOn: entry.dependsOn
+      })),
+      reasons
+    )).toEqual([
+      {
+        test: "e2e/app.spec.ts",
+        reasons: [
+          {
+            kind: "run-all",
+            changedFile: "pnpm-lock.yaml",
+            declaredTarget: "pnpm-lock.yaml"
+          }
+        ]
+      },
+      {
+        test: "e2e/feature.spec.ts",
+        reasons: [
+          {
+            kind: "run-all",
+            changedFile: "pnpm-lock.yaml",
+            declaredTarget: "pnpm-lock.yaml"
+          }
+        ]
+      }
+    ]);
   });
 });

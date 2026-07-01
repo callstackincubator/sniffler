@@ -1,0 +1,352 @@
+import { createGlobMatcher, normalizePath } from "../filesystem/path-utils.js";
+import type { ContainmentPathEdge, ContainmentResult } from "../graph/traverse-containment.js";
+import type { ImpactResult } from "../graph/traverse-impact.js";
+import type { TestMap } from "./load-test-map.js";
+
+export type MatchedTest = {
+  test: string;
+  reasons: ReadonlyArray<TestMatchReason>;
+};
+
+export type DependencyTestMatchReason = {
+  kind?: "dependency";
+  changedFile: string;
+  declaredTarget: string;
+  dependencyPath: ReadonlyArray<string>;
+};
+
+export type ContainmentTestMatchReason = {
+  kind: "containment";
+  changedFile: string;
+  declaredTarget: string;
+  invalidatedRoot: string;
+  dependencyPath: ReadonlyArray<string>;
+  containmentPath: ReadonlyArray<string>;
+  containmentPathEdges?: ReadonlyArray<ContainmentPathEdge>;
+};
+
+export type RunAllTestMatchReason = {
+  kind: "run-all";
+  changedFile: string;
+  declaredTarget: string;
+};
+
+export type TestMatchReason = DependencyTestMatchReason | ContainmentTestMatchReason | RunAllTestMatchReason;
+
+export type RecommendTestsInput = {
+  testMap: TestMap;
+  impact: ImpactResult;
+  containment?: ContainmentResult;
+  sharedTargets?: ReadonlyArray<string>;
+};
+
+export type RunAllSelection = {
+  reasons: ReadonlyArray<RunAllTestMatchReason>;
+  recommendedTests: ReadonlyArray<{
+    test: string;
+    reasons: ReadonlyArray<RunAllTestMatchReason>;
+  }>;
+};
+
+const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+};
+
+const isGlobTarget = (target: string): boolean => {
+  return /[*?]/.test(target);
+};
+
+const getReasonPathLength = (reason: TestMatchReason): number => {
+  return reason.kind === "run-all" ? 0 : reason.dependencyPath.length;
+};
+
+const getReasonKindRank = (reason: TestMatchReason): number => {
+  if (reason.kind === "run-all") {
+    return 2;
+  }
+
+  if (reason.kind === "containment") {
+    return 1;
+  }
+
+  return 0;
+};
+
+const getReasonDependencyPath = (reason: TestMatchReason): ReadonlyArray<string> => {
+  return reason.kind === "run-all" ? [] : reason.dependencyPath;
+};
+
+export const compareTestMatchReasons = (left: TestMatchReason, right: TestMatchReason): number => {
+  const kindComparison = getReasonKindRank(left) - getReasonKindRank(right);
+  if (kindComparison !== 0) {
+    return kindComparison;
+  }
+
+  const pathLengthComparison = getReasonPathLength(left) - getReasonPathLength(right);
+  if (pathLengthComparison !== 0) {
+    return pathLengthComparison;
+  }
+
+  const leftIsGlob = isGlobTarget(left.declaredTarget);
+  const rightIsGlob = isGlobTarget(right.declaredTarget);
+
+  if (leftIsGlob !== rightIsGlob) {
+    return leftIsGlob ? 1 : -1;
+  }
+
+  const changedFileComparison = left.changedFile.localeCompare(right.changedFile);
+  if (changedFileComparison !== 0) {
+    return changedFileComparison;
+  }
+
+  const targetComparison = left.declaredTarget.localeCompare(right.declaredTarget);
+  if (targetComparison !== 0) {
+    return targetComparison;
+  }
+
+  if (left.kind === "containment" && right.kind === "containment") {
+    const invalidatedRootComparison = left.invalidatedRoot.localeCompare(right.invalidatedRoot);
+    if (invalidatedRootComparison !== 0) {
+      return invalidatedRootComparison;
+    }
+  }
+
+  return getReasonDependencyPath(left).join("\u0000").localeCompare(getReasonDependencyPath(right).join("\u0000"));
+};
+
+const mergeDependsOn = (dependsOn: ReadonlyArray<string>, sharedTargets: ReadonlyArray<string>): Array<string> => {
+  const mergedTargets = new Map<string, string>();
+
+  for (const target of [...dependsOn, ...sharedTargets]) {
+    const normalizedTarget = normalizePath(target);
+
+    if (!mergedTargets.has(normalizedTarget)) {
+      mergedTargets.set(normalizedTarget, target);
+    }
+  }
+
+  return [...mergedTargets.values()];
+};
+
+const matchesPathPattern = (path: string, pattern: string): boolean => {
+  const normalizedPath = normalizePath(path);
+  const normalizedPattern = normalizePath(pattern);
+
+  if (isGlobTarget(pattern)) {
+    return createGlobMatcher(pattern)(normalizedPath);
+  }
+
+  return normalizedPath === normalizedPattern;
+};
+
+export const selectInvalidatedRoots = (
+  invalidateSubtreeWhenTouched: ReadonlyArray<string>,
+  impactAffectedModules: ReadonlyArray<string>
+): Array<string> => {
+  if (invalidateSubtreeWhenTouched.length === 0) {
+    return [];
+  }
+
+  return sortUniqueStrings(
+    impactAffectedModules.filter((module) => {
+      return invalidateSubtreeWhenTouched.some((pattern) => matchesPathPattern(module, pattern));
+    })
+  );
+};
+
+const selectExpandedTestMap = (testMap: TestMap, sharedTargets: ReadonlyArray<string>): TestMap => {
+  if (sharedTargets.length === 0) {
+    return testMap;
+  }
+
+  return testMap.map((entry) => ({
+    test: entry.test,
+    dependsOn: mergeDependsOn(entry.dependsOn, sharedTargets)
+  }));
+};
+
+export const resolveRunAllReasons = (
+  changedFiles: ReadonlyArray<string>,
+  runAllWhenChanged: ReadonlyArray<string>
+): Array<RunAllTestMatchReason> => {
+  const reasons: Array<RunAllTestMatchReason> = [];
+  const seenReasons = new Set<string>();
+
+  for (const changedFile of changedFiles) {
+    for (const declaredTarget of runAllWhenChanged) {
+      const normalizedTarget = normalizePath(declaredTarget);
+
+      if (isGlobTarget(declaredTarget)) {
+        if (!createGlobMatcher(declaredTarget)(changedFile)) {
+          continue;
+        }
+      } else if (normalizePath(changedFile) !== normalizedTarget) {
+        continue;
+      }
+
+      const reason = {
+        kind: "run-all" as const,
+        changedFile,
+        declaredTarget
+      };
+      const reasonKey = `${reason.changedFile}\u0000${reason.declaredTarget}`;
+
+      if (seenReasons.has(reasonKey)) {
+        continue;
+      }
+
+      seenReasons.add(reasonKey);
+      reasons.push(reason);
+    }
+  }
+
+  return reasons.sort((left, right) => {
+    const changedFileComparison = left.changedFile.localeCompare(right.changedFile);
+    if (changedFileComparison !== 0) {
+      return changedFileComparison;
+    }
+
+    return left.declaredTarget.localeCompare(right.declaredTarget);
+  });
+};
+
+export const selectRunAllTests = (
+  testMap: TestMap,
+  reasons: ReadonlyArray<RunAllTestMatchReason>
+): RunAllSelection["recommendedTests"] => {
+  return sortUniqueStrings(testMap.map((entry) => entry.test)).map((test) => ({
+    test,
+    reasons
+  }));
+};
+
+export const selectRunAllRecommendation = (
+  testMap: TestMap,
+  reasons: ReadonlyArray<RunAllTestMatchReason>
+): RunAllSelection => {
+  return {
+    reasons,
+    recommendedTests: selectRunAllTests(testMap, reasons)
+  };
+};
+
+export const recommendTests = (input: RecommendTestsInput): Array<MatchedTest> => {
+  const impact = input.impact;
+  const containment = input.containment;
+  const sharedTargets = input.sharedTargets ?? [];
+  const expandedTestMap = selectExpandedTestMap(input.testMap, sharedTargets);
+
+  const pathsByModule = new Map<string, ReadonlyArray<string>>();
+
+  for (const path of impact.paths) {
+    pathsByModule.set(normalizePath(path.module), path.path);
+  }
+
+  const containmentPathsByModule = new Map<
+    string,
+    {
+      invalidatedRoot: string;
+      path: ReadonlyArray<string>;
+      containmentPathEdges?: ReadonlyArray<ContainmentPathEdge>;
+    }
+  >();
+
+  for (const path of containment?.paths ?? []) {
+    containmentPathsByModule.set(normalizePath(path.module), {
+      invalidatedRoot: normalizePath(path.invalidatedRoot),
+      path: path.path,
+      ...(path.containmentPathEdges !== undefined &&
+      path.containmentPathEdges.some((edge) => edge.synthetic !== undefined)
+        ? { containmentPathEdges: path.containmentPathEdges }
+        : {})
+    });
+  }
+
+  const matchedTests: MatchedTest[] = [];
+  const sortedTests = [...expandedTestMap].sort((left, right) => left.test.localeCompare(right.test));
+
+  for (const testEntry of sortedTests) {
+    const reasons: TestMatchReason[] = [];
+    const seenReasons = new Set<string>();
+
+    for (const target of testEntry.dependsOn) {
+      const normalizedTarget = normalizePath(target);
+      const matcher = isGlobTarget(target) ? createGlobMatcher(target) : null;
+
+      for (const [module, dependencyPath] of pathsByModule) {
+        const matched = matcher === null ? module === normalizedTarget : matcher(module);
+
+        if (!matched) {
+          continue;
+        }
+
+        const changedFile = dependencyPath[0] ?? module;
+        const reason: TestMatchReason = {
+          changedFile,
+          declaredTarget: target,
+          dependencyPath
+        };
+        const reasonKey = [reason.changedFile, reason.declaredTarget, ...reason.dependencyPath].join("\u0000");
+
+        if (seenReasons.has(reasonKey)) {
+          continue;
+        }
+
+        seenReasons.add(reasonKey);
+        reasons.push(reason);
+      }
+
+      for (const [module, containmentPath] of containmentPathsByModule) {
+        const matched = matcher === null ? module === normalizedTarget : matcher(module);
+
+        if (!matched) {
+          continue;
+        }
+
+        const dependencyPath = pathsByModule.get(containmentPath.invalidatedRoot);
+
+        if (dependencyPath === undefined) {
+          continue;
+        }
+
+        const reason: ContainmentTestMatchReason = {
+          kind: "containment",
+          changedFile: dependencyPath[0] ?? containmentPath.invalidatedRoot,
+          declaredTarget: target,
+          invalidatedRoot: containmentPath.invalidatedRoot,
+          dependencyPath,
+          containmentPath: containmentPath.path,
+          ...(containmentPath.containmentPathEdges === undefined
+            ? {}
+            : { containmentPathEdges: containmentPath.containmentPathEdges })
+        };
+        const reasonKey = [
+          reason.kind,
+          reason.changedFile,
+          reason.declaredTarget,
+          reason.invalidatedRoot,
+          ...reason.dependencyPath,
+          ...reason.containmentPath
+        ].join("\u0000");
+
+        if (seenReasons.has(reasonKey)) {
+          continue;
+        }
+
+        seenReasons.add(reasonKey);
+        reasons.push(reason);
+      }
+    }
+
+    if (reasons.length === 0) {
+      continue;
+    }
+
+    matchedTests.push({
+      test: testEntry.test,
+      reasons: [...reasons].sort(compareTestMatchReasons)
+    });
+  }
+
+  return matchedTests;
+};

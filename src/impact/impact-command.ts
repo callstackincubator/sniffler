@@ -12,9 +12,11 @@ import { renderJsonOutput } from "../output/json-output.js";
 import type { ImpactOutput } from "../output/output-types.js";
 import { renderTextOutput } from "../output/text-output.js";
 import { convertTestMap } from "../test-map/convert-test-map.js";
-import { resolveChangedFiles, resolveRunAllReasons, resolveRunAllSelection } from "./impact-changed-files.js";
+import { loadTestMap } from "../test-map/load-test-map.js";
+import { resolveChangedFiles } from "./impact-changed-files.js";
 import { prepareImpactGraph } from "./impact-graph-workflow.js";
 import { selectImpactTests } from "./impact-selection.js";
+import { resolveRunAllReasons, selectRunAllRecommendation } from "../test-map/recommend-tests.js";
 
 export type ImpactCommandInput = {
   base?: string;
@@ -102,18 +104,12 @@ export const selectImpact = async (
     return await resolveChangedFiles(input, deps, cwd);
   });
   const runAllReasons = resolveRunAllReasons(changedFiles, config.tests?.runAllWhenChanged ?? []);
-  const runAllSelection =
-    runAllReasons.length === 0
-      ? null
-      : await diagnostics.time("impact.testMap.load", async () => {
-          return await resolveRunAllSelection({
-            fs,
-            testMapPath,
-            reasons: runAllReasons
-          });
-        });
+  if (runAllReasons.length > 0) {
+    const runAllSelection = await diagnostics.time("impact.testMap.load", async () => {
+      const testMap = await loadTestMap(fs, testMapPath);
+      return selectRunAllRecommendation(testMap, runAllReasons);
+    });
 
-  if (runAllSelection !== null) {
     recordImpactSummary(diagnostics, {
       changedFiles,
       affectedModules: [],
