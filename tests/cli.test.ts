@@ -270,6 +270,43 @@ describe("CLI impact command", () => {
     );
   });
 
+  it("marks diagnostics error status when impact execution throws", async () => {
+    const fs = createFixtureFileSystem();
+    const gitDiff = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--diagnostics", "--base", "origin/main", "--head", "HEAD"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: ".", gitDiff }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("boom");
+    expect(stdout).toEqual([]);
+
+    const diagnostics = await fs.readJson<{
+      status: string;
+      metrics: Record<string, number | string | boolean>;
+    }>(".sniffler/diagnostics.json");
+    expect(diagnostics).toMatchObject({
+      status: "error",
+      metrics: {
+        error: true
+      }
+    });
+  });
+
   it("does not discover node_modules sources by default", async () => {
     const fs = createFixtureFileSystem(
       ["src/feature.ts"],
@@ -855,6 +892,33 @@ describe("CLI run command", () => {
     );
 
     expect(result.exitCode).toBe(7);
+  });
+
+  it("marks diagnostics error status when runner exits non-zero", async () => {
+    const fs = createFixtureFileSystem();
+    const runner = vi.fn(async () => ({ exitCode: 7 }));
+
+    const result = await runCli(
+      ["run", "--diagnostics", "src/shared.ts", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: ".", runner }
+    );
+
+    expect(result.exitCode).toBe(7);
+
+    const diagnostics = await fs.readJson<{
+      status: string;
+      metrics: Record<string, number | string | boolean>;
+    }>(".sniffler/diagnostics.json");
+    expect(diagnostics).toMatchObject({
+      status: "error",
+      metrics: {
+        error: true
+      }
+    });
   });
 
   it("skips the runner when no tests are mapped", async () => {
