@@ -45,12 +45,26 @@ const output = {
 
 describe("output rendering", () => {
   it("renders stable human-readable text output", () => {
-    expect(renderTextOutput(output)).toContain("Changed files:");
-    expect(renderTextOutput(output)).toContain("Recommended E2E tests:");
+    expect(renderTextOutput(output)).toContain("Impact");
+    expect(renderTextOutput(output)).toContain("1 test selected");
     expect(renderTextOutput(output)).toContain("e2e/checkout.spec.ts");
-    expect(renderTextOutput(output)).toContain("containment path:");
-    expect(renderTextOutput(output)).toContain("synthetic containment");
-    expect(renderTextOutput(output)).toContain("dynamic import target is not statically resolvable");
+    expect(renderTextOutput(output)).toContain("depends on affected");
+    expect(renderTextOutput(output)).toContain("apps/web/src/screens/Checkout.tsx");
+    expect(renderTextOutput(output)).toContain("1 warning");
+    expect(renderTextOutput(output)).toContain("Run with --diagnostics");
+    expect(renderTextOutput(output)).not.toContain("dynamic import target is not statically resolvable");
+  });
+
+  it("renders diagnostics path when provided", () => {
+    expect(renderTextOutput(output, { diagnosticsPath: ".sniffler/diagnostics.json" })).toContain(
+      "Diagnostics"
+    );
+    expect(renderTextOutput(output, { diagnosticsPath: ".sniffler/diagnostics.json" })).toContain(
+      ".sniffler/diagnostics.json"
+    );
+    expect(renderTextOutput(output, { diagnosticsPath: ".sniffler/diagnostics.json" })).not.toContain(
+      "Run with --diagnostics"
+    );
   });
 
   it("renders stable JSON output", () => {

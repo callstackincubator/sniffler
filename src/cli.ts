@@ -358,7 +358,8 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
         run: async (diagnostics) => {
           const result = await runImpactCommand(parsed.input, {
             ...deps,
-            diagnostics
+            diagnostics,
+            ...(options.diagnostics === true ? { diagnosticsPath: ".sniffler/diagnostics.json" } : {})
           });
 
           return {

@@ -47,16 +47,16 @@ describe("fixture-backed CLI coverage", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(output).toContain("Changed files:");
-    expect(output).toContain("  src/shared.ts");
-    expect(output).toContain("Affected modules:");
-    expect(output).toContain("  src/feature.ts");
-    expect(output).toContain("  src/page.ts");
-    expect(output).toContain("Recommended E2E tests:");
-    expect(output).toContain("  e2e/page.spec.ts");
-    expect(output).toContain("    path: src/shared.ts -> src/feature.ts -> src/page.ts");
-    expect(output).toContain("Warnings:");
-    expect(output).toContain("dynamic import target is not statically resolvable");
+    expect(output).toContain("Impact");
+    expect(output).toContain("Changed");
+    expect(output).toContain("Affected");
+    expect(output).toContain("1 test selected");
+    expect(output).toContain("e2e/page.spec.ts");
+    expect(output).toContain("depends on affected");
+    expect(output).toContain("src/page.ts");
+    expect(output).toContain("1 warning");
+    expect(output).toContain("Run with --diagnostics");
+    expect(output).not.toContain("dynamic import target is not statically resolvable");
   });
 
   it("renders JSON output from the single-package fixture in base/head mode", async () => {
@@ -93,8 +93,8 @@ describe("fixture-backed CLI coverage", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(output).toContain("Recommended E2E tests:");
-    expect(output).toContain("  none");
+    expect(output).toContain("Impact");
+    expect(output).toContain("No E2E tests selected");
   });
 
   it("selects tests through package.json workspace discovery", async () => {
@@ -105,7 +105,8 @@ describe("fixture-backed CLI coverage", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("e2e/checkout.spec.ts");
-    expect(output).toContain("packages/ui/src/button.ts -> apps/web/src/components/CheckoutForm.ts -> apps/web/src/screens/CheckoutScreen.ts");
+    expect(output).toContain("depends on affected");
+    expect(output).toContain("apps/web/src/screens/CheckoutScreen.ts");
   });
 
   it("selects tests through pnpm workspace discovery", async () => {
@@ -116,7 +117,8 @@ describe("fixture-backed CLI coverage", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("e2e/mobile.spec.ts");
-    expect(output).toContain("packages/shared/src/button.ts -> apps/mobile/src/components/CheckoutForm.ts -> apps/mobile/src/screens/CheckoutScreen.ts");
+    expect(output).toContain("depends on affected");
+    expect(output).toContain("apps/mobile/src/screens/CheckoutScreen.ts");
   });
 
   it("selects tests through tsconfig paths", async () => {
@@ -127,7 +129,8 @@ describe("fixture-backed CLI coverage", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("e2e/routes.spec.ts");
-    expect(output).toContain("packages/shared/src/button.ts -> apps/web/src/routes.ts");
+    expect(output).toContain("depends on affected");
+    expect(output).toContain("apps/web/src/routes.ts");
   });
 
   it("selects tests through package exports", async () => {
@@ -138,7 +141,8 @@ describe("fixture-backed CLI coverage", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("e2e/routes.spec.ts");
-    expect(output).toContain("packages/ui/src/features/card.ts -> apps/web/src/routes.ts");
+    expect(output).toContain("depends on affected");
+    expect(output).toContain("apps/web/src/routes.ts");
   });
 
   it("narrows barrel impacts to matching entity consumers", async () => {

@@ -1,107 +1,89 @@
 import type { ImpactOutput } from "./output-types.js";
 import { compareTestMatchReasons } from "../test-map/recommend-tests.js";
 
+export type TextOutputOptions = {
+  diagnosticsPath?: string;
+};
+
 const sortUniqueStrings = (values: ReadonlyArray<string>): Array<string> => {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 };
 
-const formatPath = (path: ReadonlyArray<string>): string => {
-  return path.join(" -> ");
+const colors = {
+  green: (value: string) => `\u001b[32m${value}\u001b[39m`,
+  yellow: (value: string) => `\u001b[33m${value}\u001b[39m`,
+  cyan: (value: string) => `\u001b[36m${value}\u001b[39m`,
+  dim: (value: string) => `\u001b[2m${value}\u001b[22m`
 };
 
-const formatContainmentEdges = (
-  edges: ReadonlyArray<{
-    from: string;
-    to: string;
-    synthetic?: {
-      kind: "containment";
-      from: string;
-      to: string;
-    };
-  }>
-): Array<string> => {
-  return edges.map((edge) => {
-    if (edge.synthetic !== undefined) {
-      return `    synthetic containment: ${formatPath([edge.from, edge.to])}`;
-    }
-
-    return `    containment edge: ${formatPath([edge.from, edge.to])}`;
-  });
+const pluralize = (count: number, singular: string, plural = `${singular}s`): string => {
+  return count === 1 ? singular : plural;
 };
 
-export const renderTextOutput = (output: ImpactOutput): string => {
+const formatCount = (count: number, singular: string, plural?: string): string => {
+  return `${count} ${pluralize(count, singular, plural)}`;
+};
+
+const padLabel = (label: string): string => {
+  return label.padStart(11);
+};
+
+const formatSummaryLine = (label: string, value: string): string => {
+  return `${colors.dim(padLabel(label))} ${value}`;
+};
+
+const formatReason = (reason: ImpactOutput["recommendedTests"][number]["reasons"][number]): string => {
+  if (reason.kind === "run-all") {
+    return `runs because ${colors.cyan(reason.changedFile)} matches ${colors.cyan(reason.declaredTarget)}`;
+  }
+
+  return `depends on affected ${colors.cyan(reason.declaredTarget)}`;
+};
+
+const formatWarningSummary = (warningCount: number, diagnosticsPath?: string): Array<string> => {
+  if (warningCount === 0) {
+    return [];
+  }
+
+  if (diagnosticsPath !== undefined) {
+    return [formatSummaryLine("Diagnostics", colors.cyan(diagnosticsPath))];
+  }
+
+  return [` ${colors.yellow("Run with --diagnostics")} ${colors.dim("to inspect warning details.")}`];
+};
+
+export const renderTextOutput = (output: ImpactOutput, options: TextOutputOptions = {}): string => {
   const lines: string[] = [];
   const changedFiles = sortUniqueStrings(output.changedFiles);
   const affectedModules = sortUniqueStrings(output.affectedModules);
   const recommendedTests = [...output.recommendedTests].sort((left, right) => left.test.localeCompare(right.test));
   const warnings = sortUniqueStrings(output.warnings);
 
-  lines.push("Changed files:");
-
-  if (changedFiles.length === 0) {
-    lines.push("  none");
-  } else {
-    for (const changedFile of changedFiles) {
-      lines.push(`  ${changedFile}`);
-    }
-  }
-
-  lines.push("");
-  lines.push("Affected modules:");
-
-  if (affectedModules.length === 0) {
-    lines.push("  none");
-  } else {
-    for (const affectedModule of affectedModules) {
-      lines.push(`  ${affectedModule}`);
-    }
-  }
-
-  lines.push("");
-  lines.push("Recommended E2E tests:");
-
   if (recommendedTests.length === 0) {
-    lines.push("  none");
+    lines.push(` ${colors.yellow("○")} ${colors.dim("No E2E tests selected")}`);
   } else {
     for (const test of recommendedTests) {
-      lines.push(`  ${test.test}`);
+      lines.push(` ${colors.green("✓")} ${colors.cyan(test.test)}`);
 
       const reasons = [...test.reasons].sort(compareTestMatchReasons);
+      const [firstReason, ...remainingReasons] = reasons;
 
-      for (const reason of reasons) {
-        if (reason.kind === "run-all") {
-          lines.push(`    run all: ${reason.declaredTarget}`);
-          lines.push(`    changed: ${reason.changedFile}`);
-          continue;
-        }
+      if (firstReason !== undefined) {
+        lines.push(`   ${formatReason(firstReason)}`);
+      }
 
-        if (reason.kind === "containment") {
-          lines.push(`    containment target: ${reason.declaredTarget}`);
-          lines.push(`    changed: ${reason.changedFile}`);
-          lines.push(`    invalidated root: ${reason.invalidatedRoot}`);
-          lines.push(`    reverse path: ${formatPath(reason.dependencyPath)}`);
-          lines.push(`    containment path: ${formatPath(reason.containmentPath)}`);
-          if (reason.containmentPathEdges !== undefined && reason.containmentPathEdges.length > 0) {
-            lines.push("    containment edges:");
-            lines.push(...formatContainmentEdges(reason.containmentPathEdges));
-          }
-          continue;
-        }
-
-        lines.push(`    target: ${reason.declaredTarget}`);
-        lines.push(`    path: ${formatPath(reason.dependencyPath)}`);
+      if (remainingReasons.length > 0) {
+        lines.push(`   ${colors.dim(`+ ${formatCount(remainingReasons.length, "more reason")}`)}`);
       }
     }
   }
 
-  if (warnings.length > 0) {
-    lines.push("");
-    lines.push("Warnings:");
-
-    for (const warning of warnings) {
-      lines.push(`  ${warning}`);
-    }
-  }
+  lines.push("");
+  lines.push(formatSummaryLine("Impact", formatCount(recommendedTests.length, "test selected", "tests selected")));
+  lines.push(formatSummaryLine("Changed", formatCount(changedFiles.length, "file")));
+  lines.push(formatSummaryLine("Affected", formatCount(affectedModules.length, "module")));
+  lines.push(formatSummaryLine("Warnings", formatCount(warnings.length, "warning")));
+  lines.push(...formatWarningSummary(warnings.length, options.diagnosticsPath));
 
   return `${lines.join("\n")}\n`;
 };

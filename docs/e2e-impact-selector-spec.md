@@ -529,21 +529,14 @@ PR-created caches may be scoped to the PR merge ref. Sniffler must remain correc
 Text output is optimized for humans:
 
 ```text
-Changed files:
-  packages/ui/src/Button.tsx
+ ✓ e2e/checkout.spec.ts
+   depends on affected apps/mobile/src/screens/CheckoutScreen.tsx
 
-Affected modules:
-  packages/ui/src/Button.tsx
-  apps/mobile/src/components/CheckoutForm.tsx
-  apps/mobile/src/screens/CheckoutScreen.tsx
-
-Recommended E2E tests:
-  e2e/checkout.spec.ts
-    target: apps/mobile/src/screens/CheckoutScreen.tsx
-    path: packages/ui/src/Button.tsx -> apps/mobile/src/components/CheckoutForm.tsx -> apps/mobile/src/screens/CheckoutScreen.tsx
-
-Warnings:
-  packages/app/src/routes.ts:12 dynamic import target is not statically resolvable
+     Impact 1 test selected
+    Changed 1 file
+   Affected 3 modules
+   Warnings 1 warning
+ Run with --diagnostics to inspect warning details.
 ```
 
 JSON output is optimized for CI:

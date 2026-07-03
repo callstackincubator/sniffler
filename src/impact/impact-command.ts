@@ -46,6 +46,7 @@ export type ImpactCommandDeps = {
   cwd?: string;
   gitDiff?: GitDiffProvider;
   diagnostics?: Diagnostics;
+  diagnosticsPath?: string;
   staleChecker?: StaleChecker;
   cacheStoreFactory?: (input: { cache: GraphCache | null; staleChecker: StaleChecker }) => GraphCacheStore;
 };
@@ -167,7 +168,7 @@ export const runImpactCommand = async (
   const config = (await loadConfig({ fs, configPath: input.configPath })).config;
   const format = input.format ?? config.output?.format ?? "text";
   const rendered = await (deps.diagnostics ?? noopDiagnostics).time("impact.output.render", async () => {
-    return format === "json" ? renderJsonOutput(output) : renderTextOutput(output);
+    return format === "json" ? renderJsonOutput(output) : renderTextOutput(output, { diagnosticsPath: deps.diagnosticsPath });
   });
 
   return {
