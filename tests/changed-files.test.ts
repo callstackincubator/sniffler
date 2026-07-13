@@ -40,6 +40,45 @@ describe("impact changed-files helpers", () => {
     expect(result).toEqual(["src/app.ts", "src/feature.ts"]);
   });
 
+  it("uses an injected working-tree provider and normalizes its files", async () => {
+    const workingTree = vi.fn(async () => ["src\\feature.ts", "./src/app.ts", "src/app.ts"]);
+
+    const result = await resolveChangedFiles(
+      {
+        workingTree: true
+      },
+      {
+        workingTree
+      },
+      "/repo"
+    );
+
+    expect(workingTree).toHaveBeenCalledWith({ cwd: "/repo" });
+    expect(result).toEqual(["src/app.ts", "src/feature.ts"]);
+  });
+
+  it("unions base/head and working-tree discovery", async () => {
+    const gitDiff = vi.fn(async () => ["src/base.ts", "src/shared.ts"]);
+    const workingTree = vi.fn(async () => ["./src/local.ts", "src/shared.ts"]);
+
+    const result = await resolveChangedFiles(
+      {
+        base: "origin/main",
+        head: "HEAD",
+        workingTree: true
+      },
+      {
+        gitDiff,
+        workingTree
+      },
+      "/repo"
+    );
+
+    expect(gitDiff).toHaveBeenCalledWith({ base: "origin/main", head: "HEAD", cwd: "/repo" });
+    expect(workingTree).toHaveBeenCalledWith({ cwd: "/repo" });
+    expect(result).toEqual(["src/base.ts", "src/local.ts", "src/shared.ts"]);
+  });
+
   it("builds run-all selection from manifest", async () => {
     const fs = createMemoryFileSystem({
       ".sniffler/test-map.json": JSON.stringify([

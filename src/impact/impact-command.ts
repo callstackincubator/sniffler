@@ -21,6 +21,7 @@ import { resolveRunAllReasons, selectRunAllRecommendation } from "../test-map/re
 export type ImpactCommandInput = {
   base?: string;
   head?: string;
+  workingTree?: boolean;
   changedFiles?: ReadonlyArray<string>;
   configPath?: string;
   format?: SnifflerOutputFormat;
@@ -41,10 +42,15 @@ export type GitDiffProvider = (input: {
   cwd: string;
 }) => Promise<ReadonlyArray<string>>;
 
+export type WorkingTreeProvider = (input: {
+  cwd: string;
+}) => Promise<ReadonlyArray<string>>;
+
 export type ImpactCommandDeps = {
   fs?: FileSystem;
   cwd?: string;
   gitDiff?: GitDiffProvider;
+  workingTree?: WorkingTreeProvider;
   diagnostics?: Diagnostics;
   diagnosticsPath?: string;
   staleChecker?: StaleChecker;
