@@ -29,18 +29,18 @@ sniffler impact --base origin/main --head HEAD
 sniffler run --base origin/main --head HEAD -- pnpm vitest run
 ```
 
-To select from local staged, unstaged, and untracked non-ignored files, use `--working-tree`:
+To select from local staged, unstaged, and untracked non-ignored files, use `--uncommitted`:
 
 ```bash
-sniffler impact --working-tree
-sniffler run --working-tree -- pnpm vitest run
+sniffler impact --uncommitted
+sniffler run --uncommitted -- pnpm vitest run
 ```
 
-Working-tree discovery can be combined with a base/head comparison. Sniffler normalizes, sorts, and deduplicates the union:
+Uncommitted-change discovery can be combined with a base/head comparison. Sniffler normalizes, sorts, and deduplicates the union:
 
 ```bash
-sniffler impact --base origin/main --head HEAD --working-tree
-sniffler run --base origin/main --head HEAD --working-tree -- pnpm vitest run
+sniffler impact --base origin/main --head HEAD --uncommitted
+sniffler run --base origin/main --head HEAD --uncommitted -- pnpm vitest run
 ```
 
 Explicit positional files are a separate input mode and cannot be combined with Git discovery options.

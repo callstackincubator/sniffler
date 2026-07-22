@@ -41,13 +41,13 @@ const helpText = [
   "  sniffler impact --help",
   "  sniffler run --help",
   "  sniffler impact --base <ref> --head <ref>",
-  "  sniffler impact --working-tree",
-  "  sniffler impact --base <ref> --head <ref> --working-tree",
+  "  sniffler impact --uncommitted",
+  "  sniffler impact --base <ref> --head <ref> --uncommitted",
   "  sniffler impact [<file> ...]",
   "  sniffler impact --changed <file> [<file> ...]",
   "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
-  "  sniffler run --working-tree -- <command> [args ...]",
-  "  sniffler run --base <ref> --head <ref> --working-tree -- <command> [args ...]",
+  "  sniffler run --uncommitted -- <command> [args ...]",
+  "  sniffler run --base <ref> --head <ref> --uncommitted -- <command> [args ...]",
   "  sniffler run [<file> ...] -- <command> [args ...]",
   "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
   "",
@@ -61,15 +61,15 @@ const impactHelpText = [
   "",
   "Usage:",
   "  sniffler impact --base <ref> --head <ref>",
-  "  sniffler impact --working-tree",
-  "  sniffler impact --base <ref> --head <ref> --working-tree",
+  "  sniffler impact --uncommitted",
+  "  sniffler impact --base <ref> --head <ref> --uncommitted",
   "  sniffler impact [<file> ...]",
   "  sniffler impact --changed <file> [<file> ...]",
   "",
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
-  "  --working-tree    Include staged, unstaged, and untracked files",
+  "  --uncommitted     Include staged, unstaged, and untracked files",
   "  --diagnostics     Write local timing diagnostics to .sniffler/diagnostics.json",
   "  --format <text|json>  Override the configured output format",
   "  --platform <name> Use platform-aware file resolution",
@@ -81,15 +81,15 @@ const runHelpText = [
   "",
   "Usage:",
   "  sniffler run --base <ref> --head <ref> -- <command> [args ...]",
-  "  sniffler run --working-tree -- <command> [args ...]",
-  "  sniffler run --base <ref> --head <ref> --working-tree -- <command> [args ...]",
+  "  sniffler run --uncommitted -- <command> [args ...]",
+  "  sniffler run --base <ref> --head <ref> --uncommitted -- <command> [args ...]",
   "  sniffler run [<file> ...] -- <command> [args ...]",
   "  sniffler run --changed <file> [<file> ...] -- <command> [args ...]",
   "",
   "Options:",
   "  --base <ref>      Git base ref for changed-file discovery",
   "  --head <ref>      Git head ref for changed-file discovery",
-  "  --working-tree    Include staged, unstaged, and untracked files",
+  "  --uncommitted     Include staged, unstaged, and untracked files",
   "  --diagnostics     Write local timing diagnostics to .sniffler/diagnostics.json",
   "  --platform <name> Use platform-aware file resolution",
   "  --config <path>   Path to .sniffler/config.json"
@@ -119,8 +119,8 @@ type ParsedSelectionOptions = Record<string, unknown> & {
   "--"?: ReadonlyArray<string>;
 };
 
-const allowedImpactOptionKeys = new Set(["base", "head", "workingTree", "format", "config", "diagnostics", "platform"]);
-const allowedRunOptionKeys = new Set(["base", "head", "workingTree", "config", "diagnostics", "platform"]);
+const allowedImpactOptionKeys = new Set(["base", "head", "uncommitted", "format", "config", "diagnostics", "platform"]);
+const allowedRunOptionKeys = new Set(["base", "head", "uncommitted", "config", "diagnostics", "platform"]);
 
 const toFlagName = (key: string): string => {
   return `--${key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
@@ -257,9 +257,9 @@ const buildImpactInput = (
   const hasFiles = files.length > 0;
   const hasBase = base.value !== undefined;
   const hasHead = head.value !== undefined;
-  const hasWorkingTree = options.workingTree === true;
+  const hasUncommitted = options.uncommitted === true;
 
-  if (hasFiles && (hasBase || hasHead || hasWorkingTree)) {
+  if (hasFiles && (hasBase || hasHead || hasUncommitted)) {
     return { type: "error", message: "Use changed files or Git discovery options, not both" };
   }
 
@@ -267,8 +267,8 @@ const buildImpactInput = (
     return { type: "error", message: "--base and --head must be provided together" };
   }
 
-  if (!hasFiles && !hasBase && !hasHead && !hasWorkingTree) {
-    return { type: "error", message: "Provide changed files, --working-tree, or both --base and --head" };
+  if (!hasFiles && !hasBase && !hasHead && !hasUncommitted) {
+    return { type: "error", message: "Provide changed files, --uncommitted, or both --base and --head" };
   }
 
   const input: ImpactCommandInput = {};
@@ -280,8 +280,8 @@ const buildImpactInput = (
     input.head = head.value;
   }
 
-  if (hasWorkingTree) {
-    input.workingTree = true;
+  if (hasUncommitted) {
+    input.uncommitted = true;
   }
 
   if (configPath.value !== undefined) {
@@ -355,7 +355,7 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
     .command("impact [...files]", "Analyze changed files and select impacted E2E tests")
     .option("--base <ref>", "Git base ref for changed-file discovery")
     .option("--head <ref>", "Git head ref for changed-file discovery")
-    .option("--working-tree", "Include staged, unstaged, and untracked files")
+    .option("--uncommitted", "Include staged, unstaged, and untracked files")
     .option("--diagnostics", "Write local timing diagnostics to .sniffler/diagnostics.json")
     .option("--format <format>", "Override configured output format")
     .option("--platform <name>", "Use platform-aware file resolution")
@@ -390,7 +390,7 @@ const buildCli = (io: CliIO, deps: CliDeps, rawArgs: ReadonlyArray<string>) => {
     .command("run [...files]", "Select impacted E2E tests and execute a command")
     .option("--base <ref>", "Git base ref for changed-file discovery")
     .option("--head <ref>", "Git head ref for changed-file discovery")
-    .option("--working-tree", "Include staged, unstaged, and untracked files")
+    .option("--uncommitted", "Include staged, unstaged, and untracked files")
     .option("--diagnostics", "Write local timing diagnostics to .sniffler/diagnostics.json")
     .option("--platform <name>", "Use platform-aware file resolution")
     .option("--config <path>", "Path to .sniffler/config.json")

@@ -211,7 +211,7 @@ describe("real git diff mode", () => {
 
     await withWorkingDirectory(repoRoot, async () => {
       const result = await runCli(
-        ["impact", "--working-tree", "--format", "json", "--config", configPath],
+        ["impact", "--uncommitted", "--format", "json", "--config", configPath],
         {
           stdout: (chunk) => {
             output.push(chunk);
@@ -236,7 +236,7 @@ describe("real git diff mode", () => {
     });
   });
 
-  it("unions a real base/head diff with working-tree changes", async () => {
+  it("unions a real base/head diff with uncommitted changes", async () => {
     const { repoRoot, configPath, base, head } = await createGitRepo();
     const output: string[] = [];
 
@@ -248,7 +248,7 @@ describe("real git diff mode", () => {
           base,
           "--head",
           head,
-          "--working-tree",
+          "--uncommitted",
           "--format",
           "json",
           "--config",

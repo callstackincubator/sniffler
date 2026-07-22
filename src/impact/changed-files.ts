@@ -15,7 +15,7 @@ export const resolveChangedFiles = async (
     return sortUniqueStrings(input.changedFiles.map((path) => normalizePath(path)));
   }
 
-  if (input.base === undefined && input.workingTree !== true) {
+  if (input.base === undefined && input.uncommitted !== true) {
     return [];
   }
 
@@ -46,9 +46,9 @@ export const resolveChangedFiles = async (
     }));
   }
 
-  if (input.workingTree === true) {
-    const workingTree =
-      deps.workingTree ??
+  if (input.uncommitted === true) {
+    const uncommitted =
+      deps.uncommitted ??
       (async ({ cwd: nextCwd }) => {
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
@@ -64,7 +64,7 @@ export const resolveChangedFiles = async (
         return results.flatMap((result) => parsePaths(String(result.stdout)));
       });
 
-    discoveredFiles.push(...await workingTree({ cwd }));
+    discoveredFiles.push(...await uncommitted({ cwd }));
   }
 
   return sortUniqueStrings(discoveredFiles.map((path) => normalizePath(path)));

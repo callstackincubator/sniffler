@@ -469,13 +469,13 @@ describe("CLI impact command", () => {
     });
   });
 
-  it("renders JSON output for working-tree mode", async () => {
+  it("renders JSON output for uncommitted mode", async () => {
     const fs = createFixtureFileSystem();
-    const workingTree = vi.fn(async () => ["src/shared.ts"]);
+    const uncommitted = vi.fn(async () => ["src/shared.ts"]);
     const output: string[] = [];
 
     const result = await runCli(
-      ["impact", "--working-tree", "--format", "json"],
+      ["impact", "--uncommitted", "--format", "json"],
       {
         stdout: (chunk) => {
           output.push(chunk);
@@ -484,22 +484,22 @@ describe("CLI impact command", () => {
           output.push(chunk);
         }
       },
-      { fs, cwd: ".", workingTree }
+      { fs, cwd: ".", uncommitted }
     );
 
     expect(result.exitCode).toBe(0);
-    expect(workingTree).toHaveBeenCalledWith({ cwd: expect.any(String) });
+    expect(uncommitted).toHaveBeenCalledWith({ cwd: expect.any(String) });
     expect(JSON.parse(output.join("")).changedFiles).toEqual(["src/shared.ts"]);
   });
 
-  it("combines base/head and working-tree mode", async () => {
+  it("combines base/head and uncommitted mode", async () => {
     const fs = createFixtureFileSystem();
     const gitDiff = vi.fn(async () => ["src/feature.ts"]);
-    const workingTree = vi.fn(async () => ["src/shared.ts", "src/feature.ts"]);
+    const uncommitted = vi.fn(async () => ["src/shared.ts", "src/feature.ts"]);
     const output: string[] = [];
 
     const result = await runCli(
-      ["impact", "--base", "origin/main", "--head", "HEAD", "--working-tree", "--format", "json"],
+      ["impact", "--base", "origin/main", "--head", "HEAD", "--uncommitted", "--format", "json"],
       {
         stdout: (chunk) => {
           output.push(chunk);
@@ -508,7 +508,7 @@ describe("CLI impact command", () => {
           output.push(chunk);
         }
       },
-      { fs, cwd: ".", gitDiff, workingTree }
+      { fs, cwd: ".", gitDiff, uncommitted }
     );
 
     expect(result.exitCode).toBe(0);
@@ -628,7 +628,7 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(stderr.join("")).toContain("Provide changed files, --working-tree, or both --base and --head");
+    expect(stderr.join("")).toContain("Provide changed files, --uncommitted, or both --base and --head");
     expect(stdout.join("")).toContain("sniffler impact");
   });
 
@@ -678,13 +678,13 @@ describe("CLI impact command", () => {
     expect(stdout.join("")).toContain("sniffler impact");
   });
 
-  it("rejects positional files with working-tree discovery", async () => {
+  it("rejects positional files with uncommitted discovery", async () => {
     const fs = createFixtureFileSystem();
     const stdout: string[] = [];
     const stderr: string[] = [];
 
     const result = await runCli(
-      ["impact", "src/shared.ts", "--working-tree"],
+      ["impact", "src/shared.ts", "--uncommitted"],
       {
         stdout: (chunk) => {
           stdout.push(chunk);
@@ -698,7 +698,7 @@ describe("CLI impact command", () => {
 
     expect(result.exitCode).toBe(1);
     expect(stderr.join("")).toContain("Use changed files or Git discovery options, not both");
-    expect(stdout.join("")).toContain("--working-tree");
+    expect(stdout.join("")).toContain("--uncommitted");
   });
 
   it("rejects unknown options", async () => {
@@ -930,22 +930,22 @@ describe("CLI run command", () => {
     expect(output).toEqual([]);
   });
 
-  it("appends selected tests to the runner args in working-tree mode", async () => {
+  it("appends selected tests to the runner args in uncommitted mode", async () => {
     const fs = createFixtureFileSystem();
-    const workingTree = vi.fn(async () => ["src/shared.ts"]);
+    const uncommitted = vi.fn(async () => ["src/shared.ts"]);
     const runner = vi.fn(async () => ({ exitCode: 0 }));
 
     const result = await runCli(
-      ["run", "--working-tree", "--", "pnpm", "vitest", "run"],
+      ["run", "--uncommitted", "--", "pnpm", "vitest", "run"],
       {
         stdout: () => {},
         stderr: () => {}
       },
-      { fs, cwd: ".", workingTree, runner }
+      { fs, cwd: ".", uncommitted, runner }
     );
 
     expect(result.exitCode).toBe(0);
-    expect(workingTree).toHaveBeenCalledWith({ cwd: expect.any(String) });
+    expect(uncommitted).toHaveBeenCalledWith({ cwd: expect.any(String) });
     expect(runner).toHaveBeenCalledWith({
       command: "pnpm",
       args: ["vitest", "run", "e2e/feature.spec.ts"],
@@ -1139,11 +1139,11 @@ describe("CLI help", () => {
     expect(stderr).toEqual([]);
   });
 
-  it("documents working-tree impact and run modes", () => {
-    expect(renderImpactHelp()).toContain("sniffler impact --working-tree");
-    expect(renderImpactHelp()).toContain("--base <ref> --head <ref> --working-tree");
-    expect(renderRunHelp()).toContain("sniffler run --working-tree -- <command>");
-    expect(renderRunHelp()).toContain("--working-tree    Include staged, unstaged, and untracked files");
+  it("documents uncommitted impact and run modes", () => {
+    expect(renderImpactHelp()).toContain("sniffler impact --uncommitted");
+    expect(renderImpactHelp()).toContain("--base <ref> --head <ref> --uncommitted");
+    expect(renderRunHelp()).toContain("sniffler run --uncommitted -- <command>");
+    expect(renderRunHelp()).toContain("--uncommitted     Include staged, unstaged, and untracked files");
   });
 
 });
