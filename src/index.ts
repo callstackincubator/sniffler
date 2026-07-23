@@ -9,7 +9,8 @@ export type {
   ImpactCommandDeps,
   ImpactCommandInput,
   ImpactCommandResult,
-  SelectImpactInput
+  SelectImpactInput,
+  UncommittedProvider
 } from "./impact/impact-command.js";
 export { runRunCommand } from "./run/run-command.js";
 export type { RunCommandDeps, RunCommandInput, Runner } from "./run/run-command.js";

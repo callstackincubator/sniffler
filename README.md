@@ -29,7 +29,7 @@ Sniffler turns changed source files into the E2E tests they can affect so you ca
 
 - **Type-Safe & Developer-Friendly**: The CLI, graph, cache, and fixture-backed tests are all written in TypeScript so the behavior stays easy to evolve.
 
-- **Works With Your Setup**: Works with Git diffs, explicit file lists, `package.json` workspaces, `pnpm-workspace.yaml`, TSConfig path aliases, and package exports.
+- **Works With Your Setup**: Works with Git diffs, uncommitted (staged, unstaged, and untracked) changes, explicit file lists, `package.json` workspaces, `pnpm-workspace.yaml`, TSConfig path aliases, and package exports.
 
 ## Getting started
 
@@ -92,6 +92,22 @@ pnpm exec sniffler impact --base origin/main --head HEAD
 pnpm exec sniffler run --base origin/main --head HEAD -- pnpm vitest run
 ```
 
+For local work, discover staged, unstaged, and untracked non-ignored files directly:
+
+```bash
+pnpm exec sniffler impact --uncommitted
+pnpm exec sniffler run --uncommitted -- pnpm vitest run
+```
+
+Combine both modes to include committed branch changes and current uncommitted changes in one selection:
+
+```bash
+pnpm exec sniffler impact --base origin/main --head HEAD --uncommitted
+pnpm exec sniffler run --base origin/main --head HEAD --uncommitted -- pnpm vitest run
+```
+
+Positional file lists cannot be combined with `--base`/`--head` or `--uncommitted`.
+
 You can also pass files directly when you are not starting from a Git diff:
 
 ```bash
@@ -113,6 +129,8 @@ sniffler run --platform android src/components/Button.android.tsx -- pnpm vitest
 ```bash
 sniffler impact --base origin/main --head HEAD
 sniffler run --base origin/main --head HEAD -- pnpm vitest run
+sniffler impact --uncommitted
+sniffler run --uncommitted -- pnpm vitest run
 ```
 
 Use `impact` when you want to inspect the affected set first. Use `run` when you want Sniffler to pass that set directly into your test runner.
@@ -121,7 +139,7 @@ Use `impact` when you want to inspect the affected set first. Use `run` when you
 
 Sniffler currently supports:
 
-- **Git-based workflows**: Diff-based and explicit file-based impact selection.
+- **Git-based workflows**: Diff-based, uncommitted, combined, and explicit file-based impact selection.
 - **JavaScript and TypeScript**: Source graphs built from JS/TS files.
 - **Monorepos**: Workspace package discovery through `package.json` and `pnpm-workspace.yaml`.
 - **TypeScript path aliases**: Resolution through configured TSConfig path mappings.

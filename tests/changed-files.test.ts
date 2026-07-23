@@ -40,6 +40,45 @@ describe("impact changed-files helpers", () => {
     expect(result).toEqual(["src/app.ts", "src/feature.ts"]);
   });
 
+  it("uses an injected uncommitted provider and normalizes its files", async () => {
+    const uncommitted = vi.fn(async () => ["src\\feature.ts", "./src/app.ts", "src/app.ts"]);
+
+    const result = await resolveChangedFiles(
+      {
+        uncommitted: true
+      },
+      {
+        uncommitted
+      },
+      "/repo"
+    );
+
+    expect(uncommitted).toHaveBeenCalledWith({ cwd: "/repo" });
+    expect(result).toEqual(["src/app.ts", "src/feature.ts"]);
+  });
+
+  it("unions base/head and uncommitted discovery", async () => {
+    const gitDiff = vi.fn(async () => ["src/base.ts", "src/shared.ts"]);
+    const uncommitted = vi.fn(async () => ["./src/local.ts", "src/shared.ts"]);
+
+    const result = await resolveChangedFiles(
+      {
+        base: "origin/main",
+        head: "HEAD",
+        uncommitted: true
+      },
+      {
+        gitDiff,
+        uncommitted
+      },
+      "/repo"
+    );
+
+    expect(gitDiff).toHaveBeenCalledWith({ base: "origin/main", head: "HEAD", cwd: "/repo" });
+    expect(uncommitted).toHaveBeenCalledWith({ cwd: "/repo" });
+    expect(result).toEqual(["src/base.ts", "src/local.ts", "src/shared.ts"]);
+  });
+
   it("builds run-all selection from manifest", async () => {
     const fs = createMemoryFileSystem({
       ".sniffler/test-map.json": JSON.stringify([

@@ -60,14 +60,12 @@ const createGitRepo = async (): Promise<GitRepoState> => {
       2
     ),
     ".sniffler/test-map.json": JSON.stringify(
-      {
-        tests: [
-          {
-            test: "e2e/page.spec.ts",
-            targets: ["src/page.ts"]
-          }
-        ]
-      },
+      [
+        {
+          test: "e2e/page.spec.ts",
+          dependsOn: ["src/page.ts"]
+        }
+      ],
       null,
       2
     ),
@@ -80,7 +78,8 @@ const createGitRepo = async (): Promise<GitRepoState> => {
       'import { feature } from "./feature.ts";',
       "export const page = feature;\n"
     ].join("\n"),
-    "src/unrelated.ts": "export const unrelated = true;\n"
+    "src/unrelated.ts": "export const unrelated = true;\n",
+    ".gitignore": "src/ignored.ts\n"
   });
 
   await runGit(repoRoot, ["add", "."]);
@@ -95,6 +94,21 @@ const createGitRepo = async (): Promise<GitRepoState> => {
   await runGit(repoRoot, ["add", "."]);
   await runGit(repoRoot, ["commit", "-m", "update shared and unrelated"]);
   const head = (await runGit(repoRoot, ["rev-parse", "HEAD"])).trim();
+
+  await writeFixture(repoRoot, {
+    "src/shared.ts": "export const shared = 'working tree overlap';\n",
+    "src/feature.ts": [
+      'import { shared } from "./shared.ts";',
+      "export const feature = !shared;\n"
+    ].join("\n"),
+    "src/page.ts": [
+      'import { feature } from "./feature.ts";',
+      "export const page = !feature;\n"
+    ].join("\n"),
+    "src/local.ts": "export const local = true;\n",
+    "src/ignored.ts": "export const ignored = true;\n"
+  });
+  await runGit(repoRoot, ["add", "src/feature.ts"]);
 
   return {
     repoRoot,
@@ -188,6 +202,79 @@ describe("real git diff mode", () => {
         cwd: repoRoot
       });
       expect(output).toEqual([]);
+    });
+  });
+
+  it("discovers staged, unstaged, and untracked files while excluding ignored files", async () => {
+    const { repoRoot, configPath } = await createGitRepo();
+    const output: string[] = [];
+
+    await withWorkingDirectory(repoRoot, async () => {
+      const result = await runCli(
+        ["impact", "--uncommitted", "--format", "json", "--config", configPath],
+        {
+          stdout: (chunk) => {
+            output.push(chunk);
+          },
+          stderr: (chunk) => {
+            output.push(chunk);
+          }
+        },
+        { cwd: repoRoot }
+      );
+
+      expect(result.exitCode).toBe(0);
+      const impact = JSON.parse(output.join(""));
+      expect(impact.changedFiles).toEqual([
+        "src/feature.ts",
+        "src/local.ts",
+        "src/page.ts",
+        "src/shared.ts"
+      ]);
+      expect(impact.changedFiles).not.toContain("src/ignored.ts");
+      expect(impact.recommendedTests.map((entry: { test: string }) => entry.test)).toEqual(["e2e/page.spec.ts"]);
+    });
+  });
+
+  it("unions a real base/head diff with uncommitted changes", async () => {
+    const { repoRoot, configPath, base, head } = await createGitRepo();
+    const output: string[] = [];
+
+    await withWorkingDirectory(repoRoot, async () => {
+      const result = await runCli(
+        [
+          "impact",
+          "--base",
+          base,
+          "--head",
+          head,
+          "--uncommitted",
+          "--format",
+          "json",
+          "--config",
+          configPath
+        ],
+        {
+          stdout: (chunk) => {
+            output.push(chunk);
+          },
+          stderr: (chunk) => {
+            output.push(chunk);
+          }
+        },
+        { cwd: repoRoot }
+      );
+
+      expect(result.exitCode).toBe(0);
+      const impact = JSON.parse(output.join(""));
+      expect(impact.changedFiles).toEqual([
+        "src/feature.ts",
+        "src/local.ts",
+        "src/page.ts",
+        "src/shared.ts",
+        "src/unrelated.ts"
+      ]);
+      expect(impact.recommendedTests.map((entry: { test: string }) => entry.test)).toEqual(["e2e/page.spec.ts"]);
     });
   });
 });

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import { createSniffler } from "../src/create-sniffler.js";
-import { isMainModule, runCli } from "../src/cli.js";
+import { isMainModule, renderImpactHelp, renderRunHelp, runCli } from "../src/cli.js";
 
 const createFixtureFileSystem = (
   testMapTargets: ReadonlyArray<string> = ["src/feature.ts"],
@@ -469,6 +469,52 @@ describe("CLI impact command", () => {
     });
   });
 
+  it("renders JSON output for uncommitted mode", async () => {
+    const fs = createFixtureFileSystem();
+    const uncommitted = vi.fn(async () => ["src/shared.ts"]);
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--uncommitted", "--format", "json"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: ".", uncommitted }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(uncommitted).toHaveBeenCalledWith({ cwd: expect.any(String) });
+    expect(JSON.parse(output.join("")).changedFiles).toEqual(["src/shared.ts"]);
+  });
+
+  it("combines base/head and uncommitted mode", async () => {
+    const fs = createFixtureFileSystem();
+    const gitDiff = vi.fn(async () => ["src/feature.ts"]);
+    const uncommitted = vi.fn(async () => ["src/shared.ts", "src/feature.ts"]);
+    const output: string[] = [];
+
+    const result = await runCli(
+      ["impact", "--base", "origin/main", "--head", "HEAD", "--uncommitted", "--format", "json"],
+      {
+        stdout: (chunk) => {
+          output.push(chunk);
+        },
+        stderr: (chunk) => {
+          output.push(chunk);
+        }
+      },
+      { fs, cwd: ".", gitDiff, uncommitted }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(output.join("")).changedFiles).toEqual(["src/feature.ts", "src/shared.ts"]);
+  });
+
   it("renders run-all text output", async () => {
     const fs = createRunAllFixtureFileSystem();
     const output: string[] = [];
@@ -582,7 +628,7 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(stderr.join("")).toContain("Provide changed files or both --base and --head");
+    expect(stderr.join("")).toContain("Provide changed files, --uncommitted, or both --base and --head");
     expect(stdout.join("")).toContain("sniffler impact");
   });
 
@@ -628,8 +674,31 @@ describe("CLI impact command", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(stderr.join("")).toContain("Use changed files or --base/--head, not both");
+    expect(stderr.join("")).toContain("Use changed files or Git discovery options, not both");
     expect(stdout.join("")).toContain("sniffler impact");
+  });
+
+  it("rejects positional files with uncommitted discovery", async () => {
+    const fs = createFixtureFileSystem();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await runCli(
+      ["impact", "src/shared.ts", "--uncommitted"],
+      {
+        stdout: (chunk) => {
+          stdout.push(chunk);
+        },
+        stderr: (chunk) => {
+          stderr.push(chunk);
+        }
+      },
+      { fs, cwd: "." }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.join("")).toContain("Use changed files or Git discovery options, not both");
+    expect(stdout.join("")).toContain("--uncommitted");
   });
 
   it("rejects unknown options", async () => {
@@ -861,6 +930,29 @@ describe("CLI run command", () => {
     expect(output).toEqual([]);
   });
 
+  it("appends selected tests to the runner args in uncommitted mode", async () => {
+    const fs = createFixtureFileSystem();
+    const uncommitted = vi.fn(async () => ["src/shared.ts"]);
+    const runner = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runCli(
+      ["run", "--uncommitted", "--", "pnpm", "vitest", "run"],
+      {
+        stdout: () => {},
+        stderr: () => {}
+      },
+      { fs, cwd: ".", uncommitted, runner }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(uncommitted).toHaveBeenCalledWith({ cwd: expect.any(String) });
+    expect(runner).toHaveBeenCalledWith({
+      command: "pnpm",
+      args: ["vitest", "run", "e2e/feature.spec.ts"],
+      cwd: expect.any(String)
+    });
+  });
+
   it("appends selected tests to the runner args for legacy --changed syntax", async () => {
     const fs = createFixtureFileSystem();
     const runner = vi.fn(async () => ({ exitCode: 0 }));
@@ -1045,6 +1137,13 @@ describe("CLI help", () => {
     expect(result.exitCode).toBe(0);
     expect(stdout.join("")).toContain("sniffler");
     expect(stderr).toEqual([]);
+  });
+
+  it("documents uncommitted impact and run modes", () => {
+    expect(renderImpactHelp()).toContain("sniffler impact --uncommitted");
+    expect(renderImpactHelp()).toContain("--base <ref> --head <ref> --uncommitted");
+    expect(renderRunHelp()).toContain("sniffler run --uncommitted -- <command>");
+    expect(renderRunHelp()).toContain("--uncommitted     Include staged, unstaged, and untracked files");
   });
 
 });
