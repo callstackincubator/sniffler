@@ -193,6 +193,8 @@ Keep these details in mind when changing behavior:
 - Normalize stored paths to POSIX-style separators.
 - Resolver order matters.
 - The scanner only records string-literal dynamic imports.
+- The scanner ignores type-only imports and re-exports (`import type`, `export type ... from`, all-inline-`type` specifier lists), and drops inline `type` specifiers from entity selections.
+- `src/scanner/scan-file.js` is a committed compiled copy of `scan-file.ts` that tests import; regenerate it from the `.ts` source when the scanner changes.
 - Cache entries are an optimization, not a source of truth.
 - Changing the config or scanner version should invalidate cache reuse when hashes or versions no longer match.
 - `run` appends impacted tests to the supplied runner command and exits with that command's exit code.

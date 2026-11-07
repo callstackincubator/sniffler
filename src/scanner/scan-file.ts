@@ -90,6 +90,15 @@ const createWarningMessage = (filePath: string | undefined, line: number, kind: 
   return `${prefix} dynamic ${kind} target is not statically resolvable`;
 };
 
+type NamedSpecifier = {
+  binding: NamedBinding;
+  typeOnly: boolean;
+};
+
+const valueBindings = (specifiers: ReadonlyArray<NamedSpecifier>): NamedBinding[] => {
+  return specifiers.filter((specifier) => !specifier.typeOnly).map((specifier) => specifier.binding);
+};
+
 const createNamedSelection = (entities: ReadonlyArray<NamedBinding>): EntitySelection => {
   return {
     type: "named",
@@ -454,20 +463,42 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     }
   };
 
-  const parseNamedBindings = (): Array<NamedBinding> | null => {
+  const isTypeModifierInSpecifier = (): boolean => {
+    const afterType = snapshotState();
+    advance(4);
+    skipWhitespaceAndComments();
+
+    if (currentChar() === "," || currentChar() === "}") {
+      restoreState(afterType);
+      return false;
+    }
+
+    if (startsWithWord("as")) {
+      advance(2);
+      skipWhitespaceAndComments();
+      const isAliasOfTypeBinding = !startsWithWord("as") && isIdentifierStart(currentChar());
+      restoreState(afterType);
+      return !isAliasOfTypeBinding;
+    }
+
+    restoreState(afterType);
+    return true;
+  };
+
+  const parseNamedSpecifiers = (): Array<NamedSpecifier> | null => {
     if (currentChar() !== "{") {
       return null;
     }
 
     advance();
-    const bindings: NamedBinding[] = [];
+    const specifiers: NamedSpecifier[] = [];
 
     while (state.index < text.length) {
       skipWhitespaceAndComments();
 
       if (currentChar() === "}") {
         advance();
-        return bindings;
+        return specifiers;
       }
 
       if (currentChar() === ",") {
@@ -475,7 +506,9 @@ export const scanFileText = (input: ScanInput): ScanResult => {
         continue;
       }
 
-      if (startsWithWord("type")) {
+      const typeOnly = startsWithWord("type") && isTypeModifierInSpecifier();
+
+      if (typeOnly) {
         advance(4);
         skipWhitespaceAndComments();
       }
@@ -501,7 +534,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
         local = alias;
       }
 
-      bindings.push(local === imported ? { imported } : { imported, local });
+      specifiers.push({ binding: local === imported ? { imported } : { imported, local }, typeOnly });
       skipWhitespaceAndComments();
 
       if (currentChar() === ",") {
@@ -511,7 +544,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
       if (currentChar() === "}") {
         advance();
-        return bindings;
+        return specifiers;
       }
     }
 
@@ -614,6 +647,23 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     }
   };
 
+  const isTypeOnlyImportClause = (): boolean => {
+    const beforeType = snapshotState();
+    advance(4);
+    skipWhitespaceAndComments();
+
+    let typeIsDefaultBinding = currentChar() === ",";
+
+    if (startsWithWord("from")) {
+      advance(4);
+      skipWhitespaceAndComments();
+      typeIsDefaultBinding = currentChar() === "'" || currentChar() === '"' || currentChar() === "`";
+    }
+
+    restoreState(beforeType);
+    return !typeIsDefaultBinding;
+  };
+
   const parseImportStatement = (): void => {
     skipWhitespaceAndComments();
 
@@ -626,9 +676,9 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       return;
     }
 
-    if (startsWithWord("type")) {
-      advance(4);
-      skipWhitespaceAndComments();
+    if (startsWithWord("type") && isTypeOnlyImportClause()) {
+      finishStatement();
+      return;
     }
 
     if (currentChar() === "*") {
@@ -664,12 +714,14 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     }
 
       if (currentChar() === "{") {
-        const named = parseNamedBindings();
+        const specifiers = parseNamedSpecifiers();
 
-        if (named === null) {
+        if (specifiers === null) {
           finishStatement();
           return;
         }
+
+        const named = valueBindings(specifiers);
 
         const afterNamed = snapshotState();
         skipWhitespaceAndComments();
@@ -684,7 +736,9 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       skipWhitespaceAndComments();
       const parsed = consumeLiteral();
 
-      if (parsed !== null) {
+      const allSpecifiersAreTypeOnly = named.length === 0 && specifiers.length > 0;
+
+      if (parsed !== null && !allSpecifiersAreTypeOnly) {
         emitImport(parsed.specifier, "import", parsed.loc, createNamedSelection(named));
       }
 
@@ -708,14 +762,14 @@ export const scanFileText = (input: ScanInput): ScanResult => {
         skipWhitespaceAndComments();
 
         if (currentChar() === "{") {
-          const named = parseNamedBindings();
+          const specifiers = parseNamedSpecifiers();
 
-          if (named === null) {
+          if (specifiers === null) {
             finishStatement();
             return;
           }
 
-          namedBindings.push(...named);
+          namedBindings.push(...valueBindings(specifiers));
         } else {
           finishStatement();
           return;
@@ -743,10 +797,10 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     }
   };
 
-  const parseExportNamedList = (keywordLoc: SourceLocation): void => {
-    const named = parseNamedBindings();
+  const parseExportNamedList = (keywordLoc: SourceLocation, typeOnlyStatement: boolean): void => {
+    const specifiers = parseNamedSpecifiers();
 
-    if (named === null) {
+    if (specifiers === null) {
       finishStatement();
       return;
     }
@@ -759,8 +813,8 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       skipWhitespaceAndComments();
       const parsed = consumeLiteral();
 
-      if (parsed !== null) {
-        for (const binding of named) {
+      if (parsed !== null && !typeOnlyStatement) {
+        for (const binding of valueBindings(specifiers)) {
           emitReExport(
             parsed.specifier,
             binding.imported,
@@ -776,7 +830,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
 
     restoreState(afterNamed);
 
-    for (const binding of named) {
+    for (const { binding } of specifiers) {
       emitLocalExport(binding.local ?? binding.imported, binding.imported === (binding.local ?? binding.imported) ? undefined : binding.imported, keywordLoc);
     }
 
@@ -892,7 +946,7 @@ export const scanFileText = (input: ScanInput): ScanResult => {
     }
 
     if (currentChar() === "{") {
-      parseExportNamedList(keywordLoc);
+      parseExportNamedList(keywordLoc, false);
       return;
     }
 
@@ -914,7 +968,12 @@ export const scanFileText = (input: ScanInput): ScanResult => {
       skipWhitespaceAndComments();
 
       if (currentChar() === "{") {
-        parseExportNamedList(keywordLoc);
+        parseExportNamedList(keywordLoc, true);
+        return;
+      }
+
+      if (currentChar() === "*") {
+        finishStatement();
         return;
       }
 

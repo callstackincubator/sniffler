@@ -55,6 +55,9 @@ const createWarningMessage = (filePath, line, kind) => {
     const prefix = filePath === undefined ? `${line}` : `${filePath}:${line}`;
     return `${prefix} dynamic ${kind} target is not statically resolvable`;
 };
+const valueBindings = (specifiers) => {
+    return specifiers.filter((specifier) => !specifier.typeOnly).map((specifier) => specifier.binding);
+};
 const createNamedSelection = (entities) => {
     return {
         type: "named",
@@ -342,23 +345,42 @@ export const scanFileText = (input) => {
             advance();
         }
     };
-    const parseNamedBindings = () => {
+    const isTypeModifierInSpecifier = () => {
+        const afterType = snapshotState();
+        advance(4);
+        skipWhitespaceAndComments();
+        if (currentChar() === "," || currentChar() === "}") {
+            restoreState(afterType);
+            return false;
+        }
+        if (startsWithWord("as")) {
+            advance(2);
+            skipWhitespaceAndComments();
+            const isAliasOfTypeBinding = !startsWithWord("as") && isIdentifierStart(currentChar());
+            restoreState(afterType);
+            return !isAliasOfTypeBinding;
+        }
+        restoreState(afterType);
+        return true;
+    };
+    const parseNamedSpecifiers = () => {
         if (currentChar() !== "{") {
             return null;
         }
         advance();
-        const bindings = [];
+        const specifiers = [];
         while (state.index < text.length) {
             skipWhitespaceAndComments();
             if (currentChar() === "}") {
                 advance();
-                return bindings;
+                return specifiers;
             }
             if (currentChar() === ",") {
                 advance();
                 continue;
             }
-            if (startsWithWord("type")) {
+            const typeOnly = startsWithWord("type") && isTypeModifierInSpecifier();
+            if (typeOnly) {
                 advance(4);
                 skipWhitespaceAndComments();
             }
@@ -377,7 +399,7 @@ export const scanFileText = (input) => {
                 }
                 local = alias;
             }
-            bindings.push(local === imported ? { imported } : { imported, local });
+            specifiers.push({ binding: local === imported ? { imported } : { imported, local }, typeOnly });
             skipWhitespaceAndComments();
             if (currentChar() === ",") {
                 advance();
@@ -385,7 +407,7 @@ export const scanFileText = (input) => {
             }
             if (currentChar() === "}") {
                 advance();
-                return bindings;
+                return specifiers;
             }
         }
         return null;
@@ -453,6 +475,19 @@ export const scanFileText = (input) => {
             advance();
         }
     };
+    const isTypeOnlyImportClause = () => {
+        const beforeType = snapshotState();
+        advance(4);
+        skipWhitespaceAndComments();
+        let typeIsDefaultBinding = currentChar() === ",";
+        if (startsWithWord("from")) {
+            advance(4);
+            skipWhitespaceAndComments();
+            typeIsDefaultBinding = currentChar() === "'" || currentChar() === '"' || currentChar() === "`";
+        }
+        restoreState(beforeType);
+        return !typeIsDefaultBinding;
+    };
     const parseImportStatement = () => {
         skipWhitespaceAndComments();
         if (currentChar() === "'" || currentChar() === '"' || currentChar() === "`") {
@@ -463,9 +498,9 @@ export const scanFileText = (input) => {
             finishStatement();
             return;
         }
-        if (startsWithWord("type")) {
-            advance(4);
-            skipWhitespaceAndComments();
+        if (startsWithWord("type") && isTypeOnlyImportClause()) {
+            finishStatement();
+            return;
         }
         if (currentChar() === "*") {
             advance();
@@ -493,11 +528,12 @@ export const scanFileText = (input) => {
             return;
         }
         if (currentChar() === "{") {
-            const named = parseNamedBindings();
-            if (named === null) {
+            const specifiers = parseNamedSpecifiers();
+            if (specifiers === null) {
                 finishStatement();
                 return;
             }
+            const named = valueBindings(specifiers);
             const afterNamed = snapshotState();
             skipWhitespaceAndComments();
             if (!startsWithWord("from")) {
@@ -508,7 +544,8 @@ export const scanFileText = (input) => {
             advance(4);
             skipWhitespaceAndComments();
             const parsed = consumeLiteral();
-            if (parsed !== null) {
+            const allSpecifiersAreTypeOnly = named.length === 0 && specifiers.length > 0;
+            if (parsed !== null && !allSpecifiersAreTypeOnly) {
                 emitImport(parsed.specifier, "import", parsed.loc, createNamedSelection(named));
             }
             finishStatement();
@@ -526,12 +563,12 @@ export const scanFileText = (input) => {
                 advance();
                 skipWhitespaceAndComments();
                 if (currentChar() === "{") {
-                    const named = parseNamedBindings();
-                    if (named === null) {
+                    const specifiers = parseNamedSpecifiers();
+                    if (specifiers === null) {
                         finishStatement();
                         return;
                     }
-                    namedBindings.push(...named);
+                    namedBindings.push(...valueBindings(specifiers));
                 }
                 else {
                     finishStatement();
@@ -554,9 +591,9 @@ export const scanFileText = (input) => {
             finishStatement();
         }
     };
-    const parseExportNamedList = (keywordLoc) => {
-        const named = parseNamedBindings();
-        if (named === null) {
+    const parseExportNamedList = (keywordLoc, typeOnlyStatement) => {
+        const specifiers = parseNamedSpecifiers();
+        if (specifiers === null) {
             finishStatement();
             return;
         }
@@ -566,8 +603,8 @@ export const scanFileText = (input) => {
             advance(4);
             skipWhitespaceAndComments();
             const parsed = consumeLiteral();
-            if (parsed !== null) {
-                for (const binding of named) {
+            if (parsed !== null && !typeOnlyStatement) {
+                for (const binding of valueBindings(specifiers)) {
                     emitReExport(parsed.specifier, binding.imported, binding.local ?? binding.imported, parsed.loc);
                 }
             }
@@ -575,7 +612,7 @@ export const scanFileText = (input) => {
             return;
         }
         restoreState(afterNamed);
-        for (const binding of named) {
+        for (const { binding } of specifiers) {
             emitLocalExport(binding.local ?? binding.imported, binding.imported === (binding.local ?? binding.imported) ? undefined : binding.imported, keywordLoc);
         }
         finishStatement();
@@ -665,7 +702,7 @@ export const scanFileText = (input) => {
             return;
         }
         if (currentChar() === "{") {
-            parseExportNamedList(keywordLoc);
+            parseExportNamedList(keywordLoc, false);
             return;
         }
         if (startsWithWord("default")) {
@@ -683,7 +720,11 @@ export const scanFileText = (input) => {
             advance(4);
             skipWhitespaceAndComments();
             if (currentChar() === "{") {
-                parseExportNamedList(keywordLoc);
+                parseExportNamedList(keywordLoc, true);
+                return;
+            }
+            if (currentChar() === "*") {
+                finishStatement();
                 return;
             }
             state.index = saved.index;

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SnifflerConfig } from "../config/config-schema.js";
 
-export const SCANNER_VERSION = "scan-file-v1";
+export const SCANNER_VERSION = "scan-file-v2";
 
 const hashValue = (value: string): string => {
   return createHash("sha256").update(value).digest("hex");

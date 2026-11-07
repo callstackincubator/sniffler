@@ -141,6 +141,7 @@ Sniffler currently supports:
 
 - **Git-based workflows**: Diff-based, uncommitted, combined, and explicit file-based impact selection.
 - **JavaScript and TypeScript**: Source graphs built from JS/TS files.
+- **Type-only imports**: `import type`, `export type ... from`, and imports whose specifiers are all inline `type` are ignored, since they are erased at build time and cannot change runtime behavior.
 - **Monorepos**: Workspace package discovery through `package.json` and `pnpm-workspace.yaml`.
 - **TypeScript path aliases**: Resolution through configured TSConfig path mappings.
 - **React Native platforms**: Optional runtime platform probing for extensionless relative imports and TSConfig aliases.
