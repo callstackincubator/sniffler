@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedEdge } from "../src/cache/cache-types.js";
-import { getCacheConfigHash } from "../src/cache/cache-key.js";
+import { getCacheConfigHash, SCANNER_VERSION } from "../src/cache/cache-key.js";
 import { createMetadataStaleChecker } from "../src/cache/stale-checker.js";
 import { createMemoryFileSystem } from "../src/filesystem/memory-filesystem.js";
 import type { ScanResult } from "../src/scanner/scanner-types.js";
@@ -165,7 +165,7 @@ describe("impact cache", () => {
   it("reuses cached scan results for unchanged files", async () => {
     const fs = createFixtureFileSystem({
       appText: 'import "./shared";\nexport const app = 1;',
-      cache: buildCache('import "./shared";\nexport const app = 1;', "scan-file-v1", {
+      cache: buildCache('import "./shared";\nexport const app = 1;', SCANNER_VERSION, {
         scan: appScanResult,
         resolvedEdges: appResolvedEdges
       })
@@ -197,7 +197,7 @@ describe("impact cache", () => {
   it("rescans changed content even when cache exists", async () => {
     const fs = createFixtureFileSystem({
       appText: 'import "./shared";\nexport const app = 2;',
-      cache: buildCache('import "./shared";\nexport const app = 1;', "scan-file-v1", {
+      cache: buildCache('import "./shared";\nexport const app = 1;', SCANNER_VERSION, {
         scan: appScanResult,
         resolvedEdges: appResolvedEdges
       })
@@ -217,7 +217,7 @@ describe("impact cache", () => {
       cache: {
         version: 1,
         configHash: getCacheConfigHash(fixtureConfig),
-        scannerVersion: "scan-file-v1",
+        scannerVersion: SCANNER_VERSION,
         files: {
           "src/app.ts": {
             path: "src/app.ts",
@@ -273,7 +273,7 @@ describe("impact cache", () => {
       cache: {
         version: 1,
         configHash: getCacheConfigHash(metadataConfig),
-        scannerVersion: "scan-file-v1",
+        scannerVersion: SCANNER_VERSION,
         files: {
           "src/app.ts": {
             path: "src/app.ts",
@@ -308,7 +308,7 @@ describe("impact cache", () => {
   it("recomputes resolved edges when the source inventory changes", async () => {
     const fs = createFixtureFileSystem({
       appText: 'import "./shared";\nexport const app = 1;',
-      cache: buildCache('import "./shared";\nexport const app = 1;', "scan-file-v1", {
+      cache: buildCache('import "./shared";\nexport const app = 1;', SCANNER_VERSION, {
         scan: appScanResult,
         resolvedEdges: appResolvedEdges
       }),
@@ -428,7 +428,7 @@ describe("impact cache", () => {
         ".sniffler/cache.json": JSON.stringify({
           version: 1,
           configHash: androidHash,
-          scannerVersion: "scan-file-v1",
+          scannerVersion: SCANNER_VERSION,
           files: {
             "src/app.ts": {
               path: "src/app.ts",

@@ -223,6 +223,25 @@ describe("graph traversal", () => {
     ]);
   });
 
+  it("does not propagate impact through type-only imports", async () => {
+    const files = {
+      "src/navigation/types.ts": 'import type { CheckoutParams } from "../screens/CheckoutScreen.tsx";',
+      "src/screens/CheckoutScreen.tsx": "export type CheckoutParams = { id: string };",
+      "src/screens/HomeScreen.tsx": [
+        'import type { RootParams } from "../navigation/types.ts";',
+        'import { type CheckoutParams } from "./CheckoutScreen.tsx";'
+      ].join("\n")
+    };
+    const graph = await buildGraph(
+      Object.entries(files).map(([path, text]) => ({ path, scan: scanFileText({ filePath: path, text }) }))
+    );
+
+    const actual = await traverseImpact(graph, ["src/screens/CheckoutScreen.tsx"]);
+
+    expect(graph.edges).toEqual([]);
+    expect(actual.affectedModules).toEqual(["src/screens/CheckoutScreen.tsx"]);
+  });
+
   it("resolves tsconfig aliases across workspace package boundaries", async () => {
     const fs = createMemoryFileSystem({
       "packages/shared/src/button.ts": "export const button = true;",
